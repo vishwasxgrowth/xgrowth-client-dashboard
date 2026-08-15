@@ -181,18 +181,42 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
       { label: "Impressions", value: compact(cur.imp), c: cur.imp, p: prv.imp, series: sparkDaily.map((d) => d.imp) },
     ].map((k) => ({ ...k, d: delta(k.c, k.p), spark: sparkPath(k.series, 112, 30) }));
   }, [R]);
-  const COLS = [{ k: "name", label: "App" }, { k: "revenue", label: "Revenue" }, { k: "ecpm", label: "eCPM" }, { k: "impressions", label: "Impressions" }, { k: "matchRate", label: "Match rate" }, { k: "ctr", label: "CTR" }, { k: "showRate", label: "Show rate" }];
+
+  const metricCols = [
+    { k: "revenue", label: "Estimated earnings", fmt: money },
+    { k: "ecpm", label: "Observed eCPM", fmt: money2 },
+    { k: "requests", label: "Requests", fmt: compact },
+    { k: "matchRate", label: "Match rate", fmt: pct },
+    { k: "matched", label: "Matched requests", fmt: compact },
+    { k: "showRate", label: "Show rate", fmt: pct },
+    { k: "impressions", label: "Impressions", fmt: compact },
+    { k: "ctr", label: "CTR", fmt: pct },
+    { k: "clicks", label: "Clicks", fmt: compact },
+    { k: "arpv", label: "Ads ARPV", fmt: money4 },
+    { k: "arpdav", label: "Ads ARPDAV", fmt: money4 },
+  ];
+
   const { rows, alerts } = useMemo(() => {
-    const agg = D.APPS.map((app) => ({ app, a: D.aggregate(app, R.cur), b: D.aggregate(app, R.prev) }));
+    const enrich = (o) => ({ ...o, arpv: o.impressions ? o.revenue / o.impressions : 0, arpdav: o.dau ? o.revenue / o.dau : 0 });
+    const agg = D.APPS.map((app) => ({ app, a: enrich(D.aggregate(app, R.cur)), b: enrich(D.aggregate(app, R.prev)) }));
     const qq = q.trim().toLowerCase();
     let list = agg.filter((r) => !qq || r.app.name.toLowerCase().includes(qq));
-    list.sort((x, y) => (sortKey === "name" ? x.app.name.localeCompare(y.app.name) * -sortDir : (x.a[sortKey] - y.a[sortKey]) * sortDir));
+    list.sort((x, y) => (sortKey === "name" ? x.app.name.localeCompare(y.app.name) * -sortDir : ((x.a[sortKey] || 0) - (y.a[sortKey] || 0)) * sortDir));
     let al = 0;
-    const rws = list.map(({ app, a, b }) => { const dr = delta(a.revenue, b.revenue); if (dr.v < -threshold) al++; const cells = [{ v: money(a.revenue), d: dr }, { v: money2(a.ecpm), d: delta(a.ecpm, b.ecpm) }, { v: compact(a.impressions), d: delta(a.impressions, b.impressions) }, { v: pct(a.matchRate), d: delta(a.matchRate, b.matchRate) }, { v: pct(a.ctr), d: delta(a.ctr, b.ctr) }, { v: pct(a.showRate), d: delta(a.showRate, b.showRate) }]; return { id: app.id, name: app.name, meta: app.cat + " · " + app.tier, initials: appInitials(app.name), color: appColor(app.id), cells }; });
+    const rws = list.map(({ app, a, b }) => {
+      const dr = delta(a.revenue, b.revenue); if (dr.v < -threshold) al++;
+      const cells = metricCols.map((c) => ({ v: c.fmt(a[c.k] || 0), d: delta(a[c.k] || 0, b[c.k] || 0) }));
+      return { id: app.id, name: app.name, meta: app.cat + " · " + app.tier, initials: appInitials(app.name), color: appColor(app.id), cells };
+    });
     return { rows: rws, alerts: al };
   }, [R, q, sortKey, sortDir, threshold]);
-  const gridCols = "minmax(210px,1.6fr) repeat(6,1fr)";
+
   const sortCol = (k) => { setSortKey(k); setSortDir((d) => (sortKey === k ? -d : -1)); };
+  const APPW = 240, COLW = 132, HEADBG = "#FAFAFC";
+  const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", color: C.faint, padding: "10px 14px", background: HEADBG, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", cursor: "pointer" };
+  const cbase = { padding: "10px 14px", borderBottom: "1px solid #F1F2F6", whiteSpace: "nowrap" };
+  const caret = (k) => (sortKey === k ? (sortDir === -1 ? " ▼" : " ▲") : "");
+
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
@@ -203,6 +227,7 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
         </div>
         {range === "custom" && <><input type="date" value={cs} onChange={(e) => setCs(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px" }} /><span style={{ color: C.faint }}>→</span><input type="date" value={ce} onChange={(e) => setCe(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px" }} /></>}
       </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14, marginBottom: 16 }}>
         {kpis.map((k) => (
           <div key={k.label} style={{ ...card, padding: "16px 18px", display: "flex", justifyContent: "space-between" }}>
@@ -215,21 +240,35 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
           </div>
         ))}
       </div>
-      <RevenueChart />
+
+      <RevenueChart dates={R.cur} />
+
       {alerts > 0 && <div style={{ background: "#FDECEE", border: "1px solid #F8D3D7", color: "#C31C2B", borderRadius: 10, padding: "9px 14px", marginBottom: 14, fontSize: 12.5, fontWeight: 600 }}>{alerts === 1 ? "1 app below threshold" : alerts + " apps below threshold"} (revenue down more than {threshold}%)</div>}
+
       <div style={{ ...card, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: gridCols, padding: "10px 14px", borderBottom: "1px solid " + C.line, background: C.panel }}>
-          {COLS.map((c, i) => <button key={c.k} onClick={() => sortCol(c.k)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", color: sortKey === c.k ? C.ink : C.faint, textAlign: i === 0 ? "left" : "right", padding: 0 }}>{c.label}{sortKey === c.k ? (sortDir === -1 ? " ▼" : " ▲") : ""}</button>)}
+        <div style={{ overflow: "auto", maxHeight: "60vh" }}>
+          <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "max-content", minWidth: "100%" }}>
+            <thead>
+              <tr>
+                <th onClick={() => sortCol("name")} style={{ ...hbase, position: "sticky", top: 0, left: 0, zIndex: 3, width: APPW, minWidth: APPW, textAlign: "left", borderRight: "1px solid " + C.line, color: sortKey === "name" ? C.ink : C.faint }}>App{caret("name")}</th>
+                {metricCols.map((c) => <th key={c.k} onClick={() => sortCol(c.k)} style={{ ...hbase, position: "sticky", top: 0, zIndex: 2, width: COLW, minWidth: COLW, textAlign: "right", color: sortKey === c.k ? C.ink : C.faint }}>{c.label}{caret(c.k)}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.id} onClick={() => openApp(r.id)} style={{ cursor: "pointer" }}>
+                  <td style={{ ...cbase, position: "sticky", left: 0, zIndex: 1, background: "#fff", width: APPW, minWidth: APPW, borderRight: "1px solid " + C.line }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: r.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{r.initials}</div>
+                      <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: APPW - 60 }}>{r.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{r.meta}</div></div>
+                    </div>
+                  </td>
+                  {r.cells.map((c, i) => <td key={i} style={{ ...cbase, textAlign: "right" }}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {rows.map((r) => (
-          <div key={r.id} onClick={() => openApp(r.id)} style={{ display: "grid", gridTemplateColumns: gridCols, padding: "11px 14px", borderBottom: "1px solid #F1F2F6", alignItems: "center", cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: r.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{r.initials}</div>
-              <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{r.meta}</div></div>
-            </div>
-            {r.cells.map((c, i) => <div key={i} style={{ textAlign: "right" }}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></div>)}
-          </div>
-        ))}
       </div>
     </>
   );
@@ -509,122 +548,82 @@ function smoothPath(pts) {
   return d;
 }
 
-function RevenueChart() {
-  const [mode, setMode] = useState("overall"); // overall | apps
-  const [days, setDays] = useState(30);
+function RevenueChart({ dates }) {
+  const [mode, setMode] = useState("overall");
   const [hov, setHov] = useState(-1);
-  const [iso, setIso] = useState(null); // isolated app id in "apps" mode
+  const [iso, setIso] = useState(null);
+  const [visible, setVisible] = useState(10);
 
-  const dates = useMemo(() => D.rangeDates(days, 1), [days]);
   const apps = useMemo(() => D.APPS
     .map((app) => { const vals = dates.map((ds) => D.dayRow(app, ds).revenue); return { app, vals, total: vals.reduce((s, v) => s + v, 0) }; })
     .sort((a, b) => b.total - a.total), [dates]);
   const overall = useMemo(() => dates.map((_, i) => apps.reduce((s, a) => s + a.vals[i], 0)), [apps, dates]);
+  const shown = mode === "apps" ? apps.slice(0, visible) : apps;
 
   const W = 960, H = 300, padL = 58, padR = 18, padT = 18, padB = 34;
   const iw = W - padL - padR, ih = H - padT - padB;
-  const maxV = (mode === "overall" ? Math.max(1, ...overall) : Math.max(1, ...apps.flatMap((a) => a.vals))) * 1.08;
-  const X = (i) => padL + (dates.length === 1 ? iw / 2 : (i / (dates.length - 1)) * iw);
+  const maxV = (mode === "overall" ? Math.max(1, ...overall) : Math.max(1, ...shown.flatMap((a) => a.vals))) * 1.08;
+  const n = dates.length;
+  const X = (i) => padL + (n <= 1 ? iw / 2 : (i / (n - 1)) * iw);
   const Y = (v) => padT + (1 - v / maxV) * ih;
-  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ y: padT + f * ih, label: money(maxV * (1 - f)) }));
-  const step = Math.max(1, Math.round(dates.length / 7));
+  const grid = [0, .25, .5, .75, 1].map((f) => ({ y: padT + f * ih, label: money(maxV * (1 - f)) }));
+  const step = Math.max(1, Math.round(n / 7));
   const xl = dates.map((ds, i) => ({ i, x: X(i), label: shortDate(ds) })).filter((t) => t.i % step === 0);
-  const hovering = hov >= 0 && hov < dates.length;
-
-  const onMove = (e) => { const r = e.currentTarget.getBoundingClientRect(); const f = (e.clientX - r.left) / r.width; setHov(Math.max(0, Math.min(dates.length - 1, Math.round(f * (dates.length - 1))))); };
-  const leftPct = hovering ? ((X(hov) - padL) / iw) * (iw / W) * 100 + (padL / W) * 100 : 0;
-  const clampTx = leftPct < 22 ? "0" : leftPct > 78 ? "-100%" : "-50%";
-
-  // tooltip rows for apps mode
-  const rows = hovering ? apps.map((a) => ({ id: a.app.id, name: a.app.name, v: a.vals[hov], color: appColor(a.app.id) })).filter((r) => (iso ? r.id === iso : true)).sort((a, b) => b.v - a.v) : [];
-  const shownRows = iso ? rows : rows.slice(0, 8);
-
+  const hovering = hov >= 0 && hov < n;
+  const onMove = (e) => { const r = e.currentTarget.getBoundingClientRect(); const f = (e.clientX - r.left) / r.width; setHov(Math.max(0, Math.min(n - 1, Math.round(f * (n - 1))))); };
+  const rows = hovering ? shown.map((a) => ({ id: a.app.id, name: a.app.name, v: a.vals[hov], color: appColor(a.app.id) })).filter((r) => (iso ? r.id === iso : true)).sort((a, b) => b.v - a.v) : [];
   const seg = (on) => ({ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: on ? 650 : 550, padding: "5px 12px", borderRadius: 7, background: on ? "#fff" : "transparent", color: on ? C.ink : "#6B7180", boxShadow: on ? "0 1px 2px rgba(16,24,40,.1)" : "none" });
 
   return (
     <div style={{ ...card, padding: 16, marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>Revenue trend</div>
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>
-          {[["overall", "Overall"], ["apps", "All apps"]].map(([id, label]) => (
-            <button key={id} onClick={() => { setMode(id); setIso(null); }} style={seg(mode === id)}>{label}</button>
-          ))}
+          {[["overall", "Overall"], ["apps", "All apps"]].map(([id, label]) => <button key={id} onClick={() => { setMode(id); setIso(null); }} style={seg(mode === id)}>{label}</button>)}
         </div>
-        <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>
-          {[[14, "14D"], [30, "30D"], [90, "90D"]].map(([n, label]) => (
-            <button key={n} onClick={() => { setDays(n); setHov(-1); }} style={seg(days === n)}>{label}</button>
-          ))}
-        </div>
+      </div>
+
+      <div style={{ minHeight: 30, display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        {hovering ? (
+          mode === "overall" ? (
+            <><span style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint }}>{dates[hov]}</span><b style={{ fontFamily: C.mono, fontSize: 15 }}>{money(overall[hov])}</b></>
+          ) : (
+            <><span style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint, flex: "none" }}>{dates[hov]}</span>
+              <div style={{ display: "flex", gap: 12, overflowX: "auto" }}>
+                {rows.map((r) => <span key={r.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, whiteSpace: "nowrap" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: r.color }} />{r.name.length > 18 ? r.name.slice(0, 18) + "…" : r.name} <b style={{ fontFamily: C.mono }}>{money(r.v)}</b></span>)}
+              </div></>
+          )
+        ) : <span style={{ fontSize: 12, color: C.faint2 }}>Hover the chart for exact values</span>}
       </div>
 
       <div style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHov(-1)}>
-        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block" }}>
-          <defs>
-            <linearGradient id="ovg" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={C.accent} stopOpacity="0.28" />
-              <stop offset="100%" stopColor={C.accent} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          {grid.map((g, i) => (
-            <g key={i}>
-              <line x1={padL} x2={W - padR} y1={g.y} y2={g.y} stroke="#F0F1F5" />
-              <text x={padL - 8} y={g.y + 3} textAnchor="end" fontSize="10" fill="#9AA0AE" fontFamily="'IBM Plex Mono', monospace">{g.label}</text>
-            </g>
-          ))}
+        <svg viewBox={"0 0 " + W + " " + H} style={{ width: "100%", display: "block" }}>
+          <defs><linearGradient id="ovg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.accent} stopOpacity="0.28" /><stop offset="100%" stopColor={C.accent} stopOpacity="0" /></linearGradient></defs>
+          {grid.map((g, i) => <g key={i}><line x1={padL} x2={W - padR} y1={g.y} y2={g.y} stroke="#F0F1F5" /><text x={padL - 8} y={g.y + 3} textAnchor="end" fontSize="10" fill="#9AA0AE" fontFamily="'IBM Plex Mono', monospace">{g.label}</text></g>)}
           {xl.map((t) => <text key={t.i} x={t.x} y={H - 12} textAnchor="middle" fontSize="10" fill="#9AA0AE">{t.label}</text>)}
-
           {mode === "overall" ? (
             <>
-              <path d={smoothPath(overall.map((v, i) => [X(i), Y(v)])) + " L" + X(dates.length - 1).toFixed(1) + " " + (padT + ih) + " L" + padL + " " + (padT + ih) + " Z"} fill="url(#ovg)" />
-              <path d={smoothPath(overall.map((v, i) => [X(i), Y(v)]))} fill="none" stroke={C.accent} strokeWidth="2.4" />
+              {n > 1 && <path d={smoothPath(overall.map((v, i) => [X(i), Y(v)])) + " L" + X(n - 1).toFixed(1) + " " + (padT + ih) + " L" + padL + " " + (padT + ih) + " Z"} fill="url(#ovg)" />}
+              {n > 1 && <path d={smoothPath(overall.map((v, i) => [X(i), Y(v)]))} fill="none" stroke={C.accent} strokeWidth="2.4" />}
+              {n === 1 && <circle cx={X(0)} cy={Y(overall[0])} r="4" fill={C.accent} />}
               {hovering && <circle cx={X(hov)} cy={Y(overall[hov])} r="4.5" fill="#fff" stroke={C.accent} strokeWidth="2.5" />}
             </>
           ) : (
-            apps.map((a) => {
-              const dim = iso && iso !== a.app.id;
-              return <path key={a.app.id} d={smoothPath(a.vals.map((v, i) => [X(i), Y(v)]))} fill="none"
-                stroke={appColor(a.app.id)} strokeWidth={iso === a.app.id ? 2.6 : 1.5} strokeOpacity={dim ? 0.12 : 0.9} />;
-            })
+            shown.map((a) => { const dim = iso && iso !== a.app.id; return <path key={a.app.id} d={smoothPath(a.vals.map((v, i) => [X(i), Y(v)]))} fill="none" stroke={appColor(a.app.id)} strokeWidth={iso === a.app.id ? 2.6 : 1.5} strokeOpacity={dim ? 0.12 : 0.9} />; })
           )}
-          {mode === "apps" && hovering && shownRows.map((r) => { const a = apps.find((x) => x.app.id === r.id); return <circle key={r.id} cx={X(hov)} cy={Y(a.vals[hov])} r="3.2" fill={r.color} />; })}
+          {mode === "apps" && hovering && rows.map((r) => { const a = shown.find((x) => x.app.id === r.id); return <circle key={r.id} cx={X(hov)} cy={Y(a.vals[hov])} r="3.2" fill={r.color} />; })}
           {hovering && <line x1={X(hov)} x2={X(hov)} y1={padT} y2={padT + ih} stroke={C.accent} strokeOpacity="0.35" strokeDasharray="3 3" />}
         </svg>
-
-        {hovering && (
-          <div style={{ position: "absolute", top: 8, left: leftPct + "%", transform: "translateX(" + clampTx + ")", background: "#14161C", color: "#fff", borderRadius: 10, padding: "8px 11px", pointerEvents: "none", boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 130 }}>
-            <div style={{ fontSize: 11, color: "#B4B9C4", marginBottom: 4, fontFamily: C.mono }}>{dates[hov]}</div>
-            {mode === "overall" ? (
-              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: C.mono }}>{money(overall[hov])}</div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                {shownRows.map((r) => (
-                  <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color, flex: "none" }} />
-                    <span style={{ maxWidth: 130, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                    <span style={{ flex: 1 }} />
-                    <b style={{ fontFamily: C.mono }}>{money(r.v)}</b>
-                  </div>
-                ))}
-                {!iso && rows.length > 8 && <div style={{ fontSize: 10.5, color: "#8A90A0", marginTop: 2 }}>+{rows.length - 8} more</div>}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {mode === "apps" && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 12 }}>
-          {apps.map((a) => {
-            const on = iso === a.app.id;
-            return (
-              <button key={a.app.id} onClick={() => setIso(on ? null : a.app.id)}
-                style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid " + (on ? appColor(a.app.id) : C.line), background: on ? appColor(a.app.id) + "14" : "#fff", cursor: "pointer", borderRadius: 20, padding: "3px 9px", fontSize: 11.5, color: iso && !on ? "#9AA0AE" : C.ink }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: appColor(a.app.id) }} />
-                {a.app.name.length > 22 ? a.app.name.slice(0, 22) + "…" : a.app.name}
-              </button>
-            );
-          })}
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {shown.map((a) => { const on = iso === a.app.id; return (
+            <button key={a.app.id} onClick={() => setIso(on ? null : a.app.id)} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid " + (on ? appColor(a.app.id) : C.line), background: on ? appColor(a.app.id) + "14" : "#fff", cursor: "pointer", borderRadius: 20, padding: "3px 9px", fontSize: 11.5, color: iso && !on ? "#9AA0AE" : C.ink }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: appColor(a.app.id) }} />{a.app.name.length > 22 ? a.app.name.slice(0, 22) + "…" : a.app.name}
+            </button>); })}
+          {visible < apps.length && <button onClick={() => setVisible((v) => v + 10)} style={{ border: "1px dashed " + C.accent, background: C.accentBg, color: C.accentDk, cursor: "pointer", borderRadius: 20, padding: "3px 12px", fontSize: 11.5, fontWeight: 600 }}>Show more apps (+{Math.min(10, apps.length - visible)})</button>}
         </div>
       )}
     </div>
