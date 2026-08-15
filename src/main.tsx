@@ -10,6 +10,7 @@ import XgrowthOps from "./XgrowthOps";
 const NAME = import.meta.env.VITE_CLIENT_NAME || "Your Dashboard";
 const ACCOUNT = import.meta.env.VITE_CLIENT_ADMOB_ACCOUNT || "";
 const FOLDER = import.meta.env.VITE_CLIENT_CLICKUP_FOLDER || "";
+const DEV_TOKEN = import.meta.env.VITE_DEV_ACCESS_TOKEN || "";
 
 function Login({ onSignIn }) {
   return (
@@ -29,7 +30,11 @@ function Login({ onSignIn }) {
 function Center({ children }) { return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#8A90A0", fontFamily: "system-ui" }}>{children}</div>; }
 
 function Shell() {
-  const { isLoading, isSignedIn, token, signIn } = useContext(AuthContext);
+  const auth = useContext(AuthContext);
+  const usingDevToken = !!DEV_TOKEN;
+  const token = usingDevToken ? DEV_TOKEN : auth.token;
+  const isSignedIn = usingDevToken || auth.isSignedIn;
+  const isLoading = usingDevToken ? false : auth.isLoading;
   const [ready, setReady] = useState(false);
   useEffect(() => {
     if (!isSignedIn || !token) return;
@@ -39,7 +44,7 @@ function Shell() {
     return () => { live = false; };
   }, [isSignedIn, token]);
   if (isLoading) return <Center>…</Center>;
-  if (!isSignedIn) return <Login onSignIn={signIn} />;
+  if (!isSignedIn) return <Login onSignIn={auth.signIn} />;
   if (!ready) return <Center>Loading your dashboard…</Center>;
   return <div style={{ height: "100vh" }}><XgrowthOps /></div>;
 }
