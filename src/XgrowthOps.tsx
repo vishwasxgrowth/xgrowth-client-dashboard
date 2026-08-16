@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import D from "./activeData";
+const CLIENT_NAME = (import.meta.env.VITE_CLIENT_NAME || "Client");
 
 const C = {
   bg: "#F6F7F9", panel: "#FAFAFC", surface: "#FFFFFF", line: "#E9EAF0",
@@ -150,7 +151,7 @@ export default function XgrowthOps() {
       <div style={{ width: collapsed ? 62 : "fit-content", minWidth: collapsed ? 62 : 168, flex: "none", background: C.surface, borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "14px 10px", transition: "width .15s" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 6px 8px" }}>
           <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
-          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div style={{ fontSize: 14, fontWeight: 700 }}>Xgrowth Ops</div><div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: C.faint2 }}>Console</div></div>}
+          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap" }}>xGrowth × {CLIENT_NAME}</div><div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: C.faint2 }}>Console</div></div>}
         </div>
         <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
@@ -178,7 +179,7 @@ export default function XgrowthOps() {
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
           {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
-          {page === "tests" && <TestsTab {...{ q, tfilter, setTfilter, openTest: setTestId }} />}
+          {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setOpenTask }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
         </div>
@@ -433,28 +434,36 @@ function AppsTab({ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays,
   );
 }
 
-function TestsTab({ q, tfilter, setTfilter, openTest }) {
-  const counts = { All: D.EXPERIMENTS.length }; for (const x of D.EXPERIMENTS) counts[x.status] = (counts[x.status] || 0) + 1;
+function TestsTab({ tasks, q, tfilter, setTfilter, openTask }) {
+  const tests = tasks.filter((t) => /test|experiment/i.test(t.list));
+  const counts = { All: tests.length };
+  tests.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
+  const statuses = [...new Map(tests.map((t) => [t.status, t.statusColor || "#9AA0AE"])).entries()];
   const qq = q.trim().toLowerCase();
-  const tests = D.EXPERIMENTS.filter((x) => (tfilter === "All" || x.status === tfilter) && (!qq || x.name.toLowerCase().includes(qq) || appName(x.app).toLowerCase().includes(qq)));
+  const shown = tests.filter((t) => (tfilter === "All" || t.status === tfilter) && (!qq || t.name.toLowerCase().includes(qq) || (t.assignee || "").toLowerCase().includes(qq)));
+  const prog = (t) => { if (groupId(t.status) === "done") return 1; if (!t.start || !t.due) return 0.4; const s0 = new Date(t.start).getTime(), e0 = new Date(t.due).getTime(), n0 = new Date(D.TODAY).getTime(); return Math.max(0.02, Math.min(1, (n0 - s0) / (e0 - s0 || 1))); };
+  const chip = (on, color) => ({ border: "1px solid " + (on ? (color || C.accent) : C.line), background: on ? (color ? color + "22" : C.accent) : "#fff", color: on ? (color || "#fff") : C.sub, cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 12px", borderRadius: 20 });
+  const clean = (dd) => (dd || "").replace(/\[table-embed[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
   return (
     <>
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {["All", "live", "to do", "blocked", "completed"].map((f) => { const on = tfilter === f; return <button key={f} onClick={() => setTfilter(f)} style={{ border: "1px solid " + (on ? C.accent : C.line), background: on ? C.accent : "#fff", color: on ? "#fff" : C.sub, cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 12px", borderRadius: 20 }}>{f === "All" ? "All experiments" : f} · {counts[f] || 0}</button>; })}
+        <button onClick={() => setTfilter("All")} style={chip(tfilter === "All")}>All experiments · {counts.All}</button>
+        {statuses.map(([name, color]) => <button key={name} onClick={() => setTfilter(name)} style={chip(tfilter === name, color)}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: color, marginRight: 6 }} />{name} · {counts[name]}</button>)}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 14 }}>
-        {tests.map((x) => { const g = group(x.status); const pcolor = x.status === "blocked" ? "#E02D3C" : x.progress === 100 ? "#0E9F6E" : "#5B4BE8"; return (
-          <div key={x.id} onClick={() => openTest(x.id)} style={{ ...card, padding: 16, cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><b style={{ fontSize: 13.5, lineHeight: 1.3 }}>{x.name}</b><div style={{ flex: 1 }} /><Pill fg={g.fg} bg={g.bg}>{x.status}</Pill></div>
-            <div style={{ fontSize: 12, color: C.sub, marginBottom: 12, lineHeight: 1.45 }}>{x.hypothesis}</div>
-            <div style={{ height: 6, borderRadius: 4, background: "#F1F2F6", overflow: "hidden", marginBottom: 10 }}><div style={{ width: x.progress + "%", height: "100%", background: pcolor }} /></div>
+        {shown.map((t) => { const p = prog(t); const m = member(t.assignee || ""); const pc = groupId(t.status) === "done" ? "#0E9F6E" : /block/i.test(t.status) ? "#E02D3C" : "#5B4BE8"; return (
+          <div key={t.id} onClick={() => openTask(t.id)} style={{ ...card, padding: 16, cursor: "pointer" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><b style={{ fontSize: 13.5, lineHeight: 1.3 }}>{t.name}</b><div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: "#fff", background: t.statusColor || "#9AA0AE" }}>{t.status}</span></div>
+            <div style={{ fontSize: 12, color: C.sub, marginBottom: 12, lineHeight: 1.45, minHeight: 34, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{clean(t.desc) || "—"}</div>
+            <div style={{ height: 6, borderRadius: 4, background: "#F1F2F6", overflow: "hidden", marginBottom: 10 }}><div style={{ width: (p * 100) + "%", height: "100%", background: pc }} /></div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: C.faint2 }}>
-              <span style={{ width: 20, height: 20, borderRadius: 6, background: appColor(x.app), color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{appInitials(appName(x.app))}</span>
-              <span>{appName(x.app)}</span><div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono }}>{shortDate(x.start)} → {shortDate(x.end)}</span>
+              <span style={{ width: 20, height: 20, borderRadius: "50%", background: m.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{m.initials}</span>
+              <span>{t.assignee || "Unassigned"}</span><div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono }}>{t.start ? shortDate(t.start) : "—"} → {t.due ? shortDate(t.due) : "—"}</span>
             </div>
           </div>
         ); })}
       </div>
+      {shown.length === 0 && <Empty>No experiments match.</Empty>}
     </>
   );
 }
@@ -476,6 +485,32 @@ function TaskList({ rows }) {
     </div>
   );
 }
+function GroupedTaskList({ items, taskView, statuses }) {
+  const groups = statuses.map((st) => ({ ...st, list: items.filter((t) => t.status === st.name) })).filter((g) => g.list.length);
+  if (!groups.length) return <Empty>No tasks match.</Empty>;
+  return (
+    <div style={{ ...card, overflow: "hidden" }}>
+      {groups.map((g) => (
+        <div key={g.name}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.panel, borderBottom: "1px solid " + C.line }}>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: g.color }} />
+            <b style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{g.name}</b>
+            <span style={{ fontFamily: C.mono, fontSize: 11, color: "#fff", background: g.color, borderRadius: 20, padding: "0 7px" }}>{g.list.length}</span>
+          </div>
+          {g.list.map((t) => { const tv = taskView(t); const overdue = t.due && t.due < D.TODAY && groupId(t.status) !== "done"; return (
+            <div key={t.id} onClick={tv.open} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) 190px 150px", gap: 12, alignItems: "center", padding: "11px 14px", borderBottom: "1px solid #F1F2F6", borderLeft: "3px solid " + (t.statusColor || g.color), cursor: "pointer" }}>
+              <div onClick={tv.toggle} style={{ width: 18, height: 18, borderRadius: 5, border: "1.5px solid " + tv.checkBd, background: tv.checkBg, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{tv.check}</div>
+              <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 550, color: tv.nfg, textDecoration: tv.strike, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{t.list}</div></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}><div style={{ width: 24, height: 24, flex: "none", borderRadius: "50%", background: tv.acolor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{tv.ainit}</div><span style={{ fontSize: 12.5, color: C.sub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.assignee || "Unassigned"}</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>{overdue && <span style={{ fontSize: 10, fontWeight: 700, color: "#C31C2B", background: "#FDECEE", padding: "1px 7px", borderRadius: 6 }}>OVERDUE</span>}<span style={{ fontFamily: C.mono, fontSize: 12.5, color: overdue ? "#C31C2B" : C.sub }}>{tv.due}</span></div>
+            </div>
+          ); })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }) {
   const meta = D.LISTS_META;
   const listNames = meta ? Object.keys(meta) : LISTS;
@@ -531,14 +566,14 @@ function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee
         {quick && <button onClick={() => setQuick(null)} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear filter</button>}
       </div>
 
-      {tview === "list" && (
+      {tview === "list" && useReal && (
         <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
           <button onClick={() => setStatusFilter(null)} style={chip(!statusFilter, C.accent, C.accentBg)}>All · {base.length}</button>
           {statusList.map((st) => <button key={st.name} onClick={() => setStatusFilter(statusFilter === st.name ? null : st.name)} style={chip(statusFilter === st.name, st.color, st.color + "22")}><span style={{ width: 8, height: 8, borderRadius: "50%", background: st.color, marginRight: 6 }} />{st.name} · {statusCount(st.name)}</button>)}
         </div>
       )}
 
-      {tview === "list" ? (rows.length ? <TaskList rows={rows} /> : <Empty>No tasks match.</Empty>) : (
+      {tview === "list" ? (<GroupedTaskList items={filtered} taskView={taskView} statuses={useReal ? meta[tlist].map((x) => ({ name: x.name, color: x.color || "#9AA0AE" })) : [...new Map(filtered.map((t) => [t.status, { name: t.status, color: t.statusColor || "#9AA0AE" }])).values()]} />) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(" + columns.length + ",minmax(210px,1fr))", gap: 12, alignItems: "start", overflowX: "auto" }}>
           {columns.map((col) => {
             const list = colTasks(col); const on = overCol === col.key;
@@ -762,7 +797,7 @@ function TestResults({ testId, setTestId, openCreate }) {
           {[{ label: "Primary lift", v: (r.lift >= 0 ? "+" : "") + r.lift.toFixed(1) + "%", sub: "eCPM, variant vs control", fg: r.lift >= 0 ? "#0B7A55" : "#C31C2B" }, { label: "Confidence", v: r.conf.toFixed(0) + "%", sub: r.conf > 95 ? "significant" : r.conf > 90 ? "approaching significance" : "not yet significant", fg: "#14161C" }, { label: "Progress", v: x.progress + "%", sub: x.status === "blocked" ? "blocked" : x.progress === 100 ? "complete" : "of planned duration", fg: "#14161C" }].map((h) => <div key={h.label} style={{ ...card, padding: 14 }}><div style={{ fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}>{h.label}</div><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, margin: "4px 0", color: h.fg }}>{h.v}</div><div style={{ fontSize: 11, color: C.faint2 }}>{h.sub}</div></div>)}
         </div>
         <div style={{ ...card, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 80px", padding: "9px 14px", background: C.panel, borderBottom: "1px solid " + C.line, fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}><span>Metric</span><span style={{ textAlign: "right" }}>Control</span><span style={{ textAlign: "right" }}>Variant</span><span style={{ textAlign: "right" }}>\u0394</span></div>
+          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 80px", padding: "9px 14px", background: C.panel, borderBottom: "1px solid " + C.line, fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}><span>Metric</span><span style={{ textAlign: "right" }}>Control</span><span style={{ textAlign: "right" }}>Variant</span><span style={{ textAlign: "right" }}>Δ</span></div>
           {r.rows.map((row) => { const d = delta(row.vari, row.ctrl); return <div key={row.metric} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 80px", padding: "10px 14px", borderBottom: "1px solid #F1F2F6", fontSize: 12.5 }}><span>{row.metric}</span><span style={{ textAlign: "right", fontFamily: C.mono }}>{fmt(row.ctrl, row.unit)}</span><span style={{ textAlign: "right", fontFamily: C.mono }}>{fmt(row.vari, row.unit)}</span><span style={{ textAlign: "right", fontFamily: C.mono, color: d.fg }}>{d.txt}</span></div>; })}
         </div>
         <div style={{ background: rec.bg, border: "1px solid " + rec.bd, color: rec.fg, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}><b>{rec.title}</b> <span style={{ fontSize: 13 }}>{rec.body}</span></div>
