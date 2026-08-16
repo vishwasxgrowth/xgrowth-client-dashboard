@@ -869,10 +869,10 @@ function TestDetail({ tasks, testId, setTestId, openCreate }) {
     })();
     return () => { live = false; };
   }, [testId]);
-  if (!seed) return null;
 
-  const desc = (detail && (detail.markdown_description || detail.description)) || seed.desc || "";
+  const desc = (detail && (detail.markdown_description || detail.description)) || (seed && seed.desc) || "";
   const arms = useMemo(() => parseArms(desc), [desc]);
+  if (!seed) return null;
   const baseline = arms.find((a) => a.isBaseline) || arms[0];
   const variants = arms.filter((a) => a !== baseline);
   const variant = variants[vi] || null;
@@ -881,8 +881,8 @@ function TestDetail({ tasks, testId, setTestId, openCreate }) {
   const vM = variant ? armMetrics(variant, unitMap) : null;
 
   const pctD = (a, b) => (b ? ((a - b) / b) * 100 : 0);
-  const lift = (bM && vM && bM.total.revenue) ? pctD(vM.total.revenue, bM.total.revenue) : 0;
-  const absD = (bM && vM) ? vM.total.revenue - bM.total.revenue : 0;
+  const lift = (bM && vM && bM.total && bM.total.revenue) ? pctD(vM.total.revenue, bM.total.revenue) : 0;
+  const absD = (bM && vM && bM.total && vM.total) ? vM.total.revenue - bM.total.revenue : 0;
   const anyData = units && Object.keys(units).length > 0;
 
   // metric rows (source-tagged like the 2c layout)
@@ -915,15 +915,18 @@ function TestDetail({ tasks, testId, setTestId, openCreate }) {
     <>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: C.faint, padding: "16px 14px 8px" }}>{title}</div>
       {rows.map(([name, subd, src, fmt, get, reading], i) => {
-        const bv = bM ? get && fmt(bM.total) : null; const vv = vM ? get && fmt(vM.total) : null;
-        const showChg = get && bM && vM && bM.total[Object.keys(bM.total)[0]] !== undefined;
+        const safe = (fn, arg) => { try { return arg ? fn(arg) : "n/a"; } catch (e) { return "n/a"; } };
+        const bVal = get ? safe(fmt, bM && bM.total) : "n/a";
+        const vVal = get ? (vM ? safe(fmt, vM.total) : "—") : "n/a";
+        let change = <span style={{ color: C.faint2 }}>n/a</span>;
+        try { if (get && bM && vM) change = chg(get(vM.total), get(bM.total), reading); } catch (e) {}
         return (
           <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid #F1F2F6", fontSize: 13 }}>
             <div><div style={{ fontWeight: 600 }}>{name}</div>{subd && <div style={{ fontSize: 11, color: C.faint2 }}>{subd}</div>}</div>
             <span style={{ justifySelf: "start", fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: (srcColor[src] || srcColor.Derived)[0], color: (srcColor[src] || srcColor.Derived)[1] }}>{src}</span>
-            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{get ? (fmt(bM ? bM.total : {})) : "n/a"}</span>
-            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{get ? (vM ? fmt(vM.total) : "—") : "n/a"}</span>
-            <span style={{ textAlign: "right" }}>{get && bM && vM ? chg(get(vM.total), get(bM.total), reading) : <span style={{ color: C.faint2 }}>n/a</span>}</span>
+            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{bVal}</span>
+            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{vVal}</span>
+            <span style={{ textAlign: "right" }}>{change}</span>
             <span style={{ textAlign: "right", fontSize: 11, color: C.faint2 }}>{reading}</span>
           </div>
         );
