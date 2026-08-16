@@ -38,12 +38,13 @@ function Shell() {
   const isLoading = usingDevToken ? false : auth.isLoading;
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (!isSignedIn || !token) return;
+    if (!isSignedIn) return;
+    if (!PROXY && !token) return; // token only required when calling AdMob directly
     let live = true;
     buildLiveSource(ACCOUNT, FOLDER, token).then((src) => { if (live) { setDataSource(src); setReady(true); } })
       .catch(() => { if (live) { resetDataSource(); setReady(true); } });
     return () => { live = false; };
-  }, [isSignedIn, token]);
+  }, [isSignedIn, token]);  // proxy mode fetches with empty token
   if (isLoading) return <Center>…</Center>;
   if (!isSignedIn) return <Login onSignIn={auth.signIn} />;
   if (!ready) return <Center>Loading your dashboard…</Center>;
