@@ -460,71 +460,74 @@ function TaskList({ rows }) {
 function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }) {
   const meta = D.LISTS_META;
   const listNames = meta ? Object.keys(meta) : LISTS;
+  const [quick, setQuick] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [overCol, setOverCol] = useState(null);
   const tqq = tq.trim().toLowerCase();
-  const filtered = tasks.filter((t) => (tlist === "All lists" || t.list === tlist) && (tassignee === "All assignees" || t.assignee === tassignee) && (!tqq || t.name.toLowerCase().includes(tqq)));
-  const od = tasks.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done");
-  const dtoday = tasks.filter((t) => t.due === D.TODAY && groupId(t.status) !== "done");
-  const doneCount = filtered.filter((t) => groupId(t.status) === "done").length;
-  const pctDone = filtered.length ? Math.round((doneCount / filtered.length) * 100) : 0;
+
+  const scope = tasks.filter((t) => (tlist === "All lists" || t.list === tlist) && (tassignee === "All assignees" || t.assignee === tassignee) && (!tqq || t.name.toLowerCase().includes(tqq)));
+  const base = quick === "overdue" ? scope.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done")
+    : quick === "today" ? scope.filter((t) => t.due === D.TODAY && groupId(t.status) !== "done")
+    : quick === "open" ? scope.filter((t) => groupId(t.status) !== "done") : scope;
+  const filtered = statusFilter ? base.filter((t) => t.status === statusFilter) : base;
+
+  const od = tasks.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done").length;
+  const dtoday = tasks.filter((t) => t.due === D.TODAY && groupId(t.status) !== "done").length;
+  const openN = tasks.filter((t) => groupId(t.status) !== "done").length;
 
   const useReal = !!(meta && tlist !== "All lists" && meta[tlist]);
-  const columns = useReal
-    ? meta[tlist].map((s) => ({ label: s.name, color: s.color || "#9AA0AE", key: s.name, type: s.type }))
-    : ["todo", "progress", "waiting", "blocked", "done"].map((gid) => ({ label: GROUPS[gid].label, color: GROUPS[gid].dot, key: gid }));
-  const colTasks = (col) => filtered.filter((t) => (useReal ? t.status === col.key : groupId(t.status) === col.key));
+  const statusList = useReal ? meta[tlist].map((s) => ({ name: s.name, color: s.color || "#9AA0AE" })) : [...new Map(base.map((t) => [t.status, { name: t.status, color: t.statusColor || "#9AA0AE" }])).values()];
+  const statusCount = (name) => base.filter((t) => t.status === name).length;
 
+  const columns = useReal ? meta[tlist].map((s) => ({ label: s.name, color: s.color || "#9AA0AE", key: s.name })) : ["todo", "progress", "waiting", "blocked", "done"].map((gid) => ({ label: GROUPS[gid].label, color: GROUPS[gid].dot, key: gid }));
+  const colTasks = (col) => filtered.filter((t) => (useReal ? t.status === col.key : groupId(t.status) === col.key));
   const order = { blocked: 0, progress: 1, waiting: 2, todo: 3, done: 4 };
   const rows = filtered.slice().sort((a, b) => order[groupId(a.status)] - order[groupId(b.status)] || (a.due || "9").localeCompare(b.due || "9")).map(taskView);
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: "#fff" };
+  const drop = (k) => { if (dragId && useReal) onMove(dragId, k); setDragId(null); setOverCol(null); };
+  const chip = (on, color, bg) => ({ border: "1px solid " + (on ? color : C.line), background: on ? bg : "#fff", color: on ? color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20, display: "inline-flex", alignItems: "center" });
 
-  const [dragId, setDragId] = useState(null);
-  const [overCol, setOverCol] = useState(null);
-  const drop = (colKey) => { if (dragId && useReal) onMove(dragId, colKey); setDragId(null); setOverCol(null); };
+  const kpi = (id, label, v, tone) => (
+    <button key={id} onClick={() => { setQuick(quick === id ? null : id); setTview("list"); setStatusFilter(null); }}
+      style={{ ...card, padding: 14, textAlign: "left", cursor: "pointer", background: quick === id ? (tone === "#C31C2B" ? "#FDECEE" : C.accentBg) : "#fff", borderColor: quick === id ? (tone === "#C31C2B" ? "#F8D3D7" : C.accent) : C.line }}>
+      <div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>{label}{quick === id ? " · filtering" : ""}</div>
+      <div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, color: tone }}>{v}</div>
+    </button>
+  );
 
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 12 }}>
-        {[{ label: "Overdue", v: od.length, tone: od.length ? "#C31C2B" : C.ink, bg: od.length ? "#FDECEE" : "#fff" },
-          { label: "Due today", v: dtoday.length, tone: C.ink, bg: "#fff" },
-          { label: "Open tasks", v: tasks.filter((t) => groupId(t.status) !== "done").length, tone: C.ink, bg: "#fff" }].map((k) => (
-          <div key={k.label} style={{ ...card, padding: 14, background: k.bg }}>
-            <div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>{k.label}</div>
-            <div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, color: k.tone }}>{k.v}</div>
-          </div>
-        ))}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+        {kpi("overdue", "Overdue", od, od ? "#C31C2B" : C.ink)}
+        {kpi("today", "Due today", dtoday, C.ink)}
+        {kpi("open", "Open tasks", openN, C.ink)}
       </div>
 
-      {/* gamified progress bar for the current view */}
-      <div style={{ ...card, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{tlist === "All lists" ? "All lists" : tlist} · completion</div>
-        <div style={{ flex: 1, height: 10, borderRadius: 6, background: "#EDEEF2", overflow: "hidden" }}>
-          <div style={{ width: pctDone + "%", height: "100%", background: "linear-gradient(90deg,#5B4BE8,#0E9F6E)", transition: "width .4s" }} />
-        </div>
-        <div style={{ fontFamily: C.mono, fontSize: 13, fontWeight: 700, color: pctDone >= 80 ? "#0B7A55" : C.ink }}>{pctDone}%{pctDone === 100 ? " 🎉" : ""}</div>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>{[["list", "List"], ["board", "Board"]].map(([id, label]) => <button key={id} onClick={() => setTview(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: tview === id ? 650 : 550, padding: "5px 14px", borderRadius: 7, background: tview === id ? "#fff" : "transparent", color: tview === id ? C.ink : "#6B7180" }}>{label}</button>)}</div>
-        <select value={tlist} onChange={(e) => setTlist(e.target.value)} style={sel}>{["All lists", ...listNames].map((l) => <option key={l}>{l}</option>)}</select>
+        <select value={tlist} onChange={(e) => { setTlist(e.target.value); setStatusFilter(null); }} style={sel}>{["All lists", ...listNames].map((l) => <option key={l}>{l}</option>)}</select>
         <select value={tassignee} onChange={(e) => setTassignee(e.target.value)} style={sel}>{["All assignees", ...D.MEMBERS.map((m) => m.name)].map((l) => <option key={l}>{l}</option>)}</select>
         <input value={tq} onChange={(e) => setTq(e.target.value)} placeholder="Filter tasks…" style={{ ...sel, width: 180 }} />
-        {tview === "board" && !useReal && <span style={{ fontSize: 11.5, color: C.faint2 }}>Pick a specific list to drag & drop with its real statuses</span>}
+        {quick && <button onClick={() => setQuick(null)} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear filter</button>}
       </div>
+
+      {tview === "list" && (
+        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+          <button onClick={() => setStatusFilter(null)} style={chip(!statusFilter, C.accent, C.accentBg)}>All · {base.length}</button>
+          {statusList.map((st) => <button key={st.name} onClick={() => setStatusFilter(statusFilter === st.name ? null : st.name)} style={chip(statusFilter === st.name, st.color, st.color + "22")}><span style={{ width: 8, height: 8, borderRadius: "50%", background: st.color, marginRight: 6 }} />{st.name} · {statusCount(st.name)}</button>)}
+        </div>
+      )}
 
       {tview === "list" ? (rows.length ? <TaskList rows={rows} /> : <Empty>No tasks match.</Empty>) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(" + columns.length + ",minmax(210px,1fr))", gap: 12, alignItems: "start", overflowX: "auto" }}>
           {columns.map((col) => {
-            const list = colTasks(col);
-            const on = overCol === col.key;
+            const list = colTasks(col); const on = overCol === col.key;
             return (
-              <div key={col.key}
-                onDragOver={(e) => { if (useReal) { e.preventDefault(); setOverCol(col.key); } }}
-                onDragLeave={() => setOverCol((c) => (c === col.key ? null : c))}
-                onDrop={() => drop(col.key)}
-                style={{ ...card, padding: 10, background: on ? "#F3F1FE" : C.panel, borderColor: on ? C.accent : C.line, borderTop: "3px solid " + col.color, transition: "background .15s" }}>
+              <div key={col.key} onDragOver={(e) => { if (useReal) { e.preventDefault(); setOverCol(col.key); } }} onDragLeave={() => setOverCol((c) => (c === col.key ? null : c))} onDrop={() => drop(col.key)}
+                style={{ ...card, padding: 10, background: on ? "#F3F1FE" : C.panel, borderColor: on ? C.accent : C.line, borderTop: "3px solid " + col.color }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, padding: "2px 4px" }}>
-                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: col.color }} />
-                  <b style={{ fontSize: 12.5 }}>{col.label}</b>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: col.color }} /><b style={{ fontSize: 12.5 }}>{col.label}</b>
                   <span style={{ fontFamily: C.mono, fontSize: 11, color: "#fff", background: col.color, borderRadius: 20, padding: "0 7px" }}>{list.length}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 20 }}>
@@ -532,13 +535,7 @@ function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee
                     <div key={t.id} draggable={useReal} onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} onClick={tv.open}
                       style={{ ...card, padding: 10, cursor: useReal ? "grab" : "pointer", opacity: dragId === t.id ? 0.4 : 1, borderLeft: "3px solid " + (t.statusColor || col.color) }}>
                       <div style={{ fontSize: 12.5, fontWeight: 550, color: tv.nfg, textDecoration: tv.strike, marginBottom: 6 }}>{t.name}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        {tv.hasPriority && <Pill fg={tv.pfg} bg={tv.pbg}>{tv.priority}</Pill>}
-                        {t.commentCount > 0 && <span style={{ fontSize: 10.5, color: C.faint2 }}>💬 {t.commentCount}</span>}
-                        <div style={{ flex: 1 }} />
-                        <span style={{ fontFamily: C.mono, fontSize: 10.5, color: tv.dfg }}>{tv.due}</span>
-                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: tv.acolor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{tv.ainit}</div>
-                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{tv.hasPriority && <Pill fg={tv.pfg} bg={tv.pbg}>{tv.priority}</Pill>}{t.commentCount > 0 && <span style={{ fontSize: 10.5, color: C.faint2 }}>💬 {t.commentCount}</span>}<div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 10.5, color: tv.dfg }}>{tv.due}</span><div style={{ width: 22, height: 22, borderRadius: "50%", background: tv.acolor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{tv.ainit}</div></div>
                     </div>
                   ); })}
                 </div>
@@ -585,6 +582,21 @@ function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSa
   );
 }
 
+function cfValue(f) {
+  const v = f.value; if (v == null || v === "") return null;
+  const tc = f.type_config || {};
+  try {
+    if (f.type === "drop_down") { const o = (tc.options || []).find((x) => x.id === v || x.orderindex === v); return o ? o.name : null; }
+    if (f.type === "labels") { const opts = tc.options || []; return (Array.isArray(v) ? v : [v]).map((id) => (opts.find((o) => o.id === id) || {}).label || id).join(", "); }
+    if (f.type === "date") return new Date(Number(v)).toLocaleDateString();
+    if (f.type === "tasks" || f.type === "list_relationship") return (Array.isArray(v) ? v : [v]).map((x) => x.name || x.id).join(", ");
+    if (f.type === "users") return (Array.isArray(v) ? v : [v]).map((u) => u.username || u).join(", ");
+    if (Array.isArray(v)) return v.map((x) => (x && (x.name || x.label || x.username)) || x).join(", ");
+    if (typeof v === "object") return v.name || v.username || null;
+    return String(v);
+  } catch { return null; }
+}
+
 function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash }) {
   const ot = tasks.find((t) => t.id === openTask);
   const [detail, setDetail] = useState(null);
@@ -599,91 +611,88 @@ function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, persist, fl
     return () => { live = false; };
   }, [ot && ot.id]);
   if (!ot) return null;
-  const g = group(ot.status), done = groupId(ot.status) === "done";
+  const done = groupId(ot.status) === "done";
   const setStatus = (v) => { patchTask(ot.id, { status: v }); if (D.updateTaskStatus) D.updateTaskStatus(ot.id, v).then(() => flash("Updated in ClickUp")).catch(() => flash("Could not update ClickUp")); };
   const d = detail || {};
-  const desc = ot.desc || d.text_content || d.description || "";
-  const cfs = ot.customFields || (d.custom_fields || []).filter((f) => f.value != null && f.value !== "").map((f) => ({ name: f.name, value: String(f.value) }));
+  const descText = d.markdown_description || d.description || ot.desc || "";
+  const codey = /[{}\[\]]|table-embed|waterfalls|"ad_|"name":/.test(descText);
+  const cfs = (d.custom_fields || []).map((f) => ({ name: f.name, value: cfValue(f) })).filter((x) => x.value != null && x.value !== "");
   const subtasks = d.subtasks || [];
-  const assignees = ot.assignees && ot.assignees.length ? ot.assignees : (d.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials }));
+  const assignees = (d.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials })).concat(ot.assignees && !d.assignees ? ot.assignees : []);
+  const statusOpts = D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].map((x) => x.name) : STATUSES;
+  const isUrl = (v) => typeof v === "string" && /^https?:\/\//.test(v);
   const lbl = { fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600, letterSpacing: ".03em" };
-  const box = { background: C.panel, border: "1px solid " + C.line, borderRadius: 10, padding: "10px 12px" };
+  const metaRow = { display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "center", padding: "7px 0" };
 
   return (
-    <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "8vh 10vw", zIndex: 30 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "80vw", height: "84vh", background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "18px 22px", borderBottom: "1px solid " + C.line }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || g.fg }}>{ot.status}</span>
-              <span style={{ fontSize: 12, color: C.faint2 }}>{ot.list}</span>
-              {ot.url && <a href={ot.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{ot.name}</div>
-          </div>
+    <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "6vh 8vw", zIndex: 30 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "84vw", height: "86vh", background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 20px", borderBottom: "1px solid " + C.line }}>
+          <span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || "#5B4BE8" }}>{ot.status}</span>
+          <span style={{ fontSize: 12, color: C.faint2 }}>{ot.list}</span>
+          {ot.url && <a href={ot.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
+          <div style={{ flex: 1 }} />
           <button onClick={() => setOpenTask(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 24, color: C.faint, lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ flex: 1, overflow: "auto", padding: 22, display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 22 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
-            <div>
-              <div style={{ ...lbl, marginBottom: 6 }}>Description</div>
-              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: desc ? C.ink : C.faint2, whiteSpace: "pre-wrap" }}>{desc || (loading ? "Loading…" : "No description")}</div>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 400px", overflow: "hidden" }}>
+          {/* MAIN */}
+          <div style={{ overflow: "auto", padding: "20px 24px" }}>
+            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>{ot.name}</div>
+            <div style={{ borderTop: "1px solid " + C.line, borderBottom: "1px solid " + C.line, marginBottom: 18 }}>
+              <div style={metaRow}><span style={lbl}>Status</span><select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff", maxWidth: 260 }}>{statusOpts.map((sn) => <option key={sn}>{sn}</option>)}</select></div>
+              <div style={metaRow}><span style={lbl}>Assignees</span><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || "#B4B9C4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ color: C.faint2, fontSize: 13 }}>Unassigned</span>}</div></div>
+              <div style={metaRow}><span style={lbl}>Priority</span><span style={{ fontSize: 13, color: ot.priorityColor || C.ink, fontWeight: 600 }}>{ot.priority || "—"}</span></div>
+              <div style={metaRow}><span style={lbl}>Dates</span><span style={{ fontSize: 13 }}>{ot.start ? shortDate(ot.start) : "—"} → {ot.due ? shortDate(ot.due) : "—"}</span></div>
+              {ot.tags && ot.tags.length > 0 && <div style={metaRow}><span style={lbl}>Tags</span><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "#EDEEF2", color: C.sub }}>{t}</span>)}</div></div>}
             </div>
-            {subtasks.length > 0 && (
-              <div>
-                <div style={{ ...lbl, marginBottom: 6 }}>Subtasks ({subtasks.length})</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {subtasks.map((st) => <div key={st.id} style={{ ...box, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: st.status?.color || "#9AA0AE" }} />{st.name}<span style={{ flex: 1 }} /><span style={{ fontSize: 11, color: C.faint2 }}>{st.status?.status}</span></div>)}
+
+            <div style={{ ...lbl, marginBottom: 8 }}>Description</div>
+            {descText ? (codey
+              ? <pre style={{ fontFamily: C.mono, fontSize: 12, lineHeight: 1.5, background: "#F6F7F9", border: "1px solid " + C.line, borderRadius: 10, padding: 14, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>{descText}</pre>
+              : <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{descText}</div>
+            ) : <div style={{ fontSize: 13, color: C.faint2 }}>{loading ? "Loading…" : "No description"}</div>}
+
+            {cfs.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ ...lbl, marginBottom: 8 }}>Fields</div>
+                <div style={{ border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
+                  {cfs.map((f, i) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, padding: "9px 14px", borderTop: i ? "1px solid #F1F2F6" : "none", fontSize: 13 }}>
+                      <span style={{ color: C.sub }}>{f.name}</span>
+                      {isUrl(f.value) ? <a href={f.value} target="_blank" rel="noreferrer" style={{ color: C.accent, wordBreak: "break-all" }}>{f.value}</a> : <span style={{ fontWeight: 500 }}>{f.value}</span>}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
-            <div>
-              <div style={{ ...lbl, marginBottom: 6 }}>Comments {comments ? "(" + comments.length + ")" : ""}</div>
-              {loading && !comments && <div style={{ fontSize: 13, color: C.faint2 }}>Loading comments…</div>}
-              {comments && comments.length === 0 && <div style={{ fontSize: 13, color: C.faint2 }}>No comments.</div>}
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {(comments || []).map((c) => (
-                  <div key={c.id} style={box}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                      <div style={{ width: 24, height: 24, borderRadius: "50%", background: c.user?.color || "#5B4BE8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{(c.user?.initials) || (c.user?.username || "?")[0]}</div>
-                      <b style={{ fontSize: 12.5 }}>{c.user?.username || "User"}</b>
-                      <span style={{ fontSize: 11, color: C.faint2 }}>{c.date ? new Date(Number(c.date)).toLocaleString() : ""}</span>
-                    </div>
-                    <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{c.comment_text || (c.comment || []).map((x) => x.text).join("")}</div>
-                  </div>
-                ))}
+
+            {subtasks.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ ...lbl, marginBottom: 8 }}>Subtasks ({subtasks.length})</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{subtasks.map((st) => <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, border: "1px solid " + C.line, borderRadius: 8, padding: "8px 12px" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: st.status?.color || "#9AA0AE" }} />{st.name}<span style={{ flex: 1 }} /><span style={{ fontSize: 11, color: C.faint2 }}>{st.status?.status}</span></div>)}</div>
               </div>
-            </div>
+            )}
+
+            <button onClick={() => { const target = statusOpts.find((x) => /done|complete|closed/i.test(x)) || "done"; setStatus(done ? statusOpts[0] : target); }} style={{ marginTop: 22, height: 38, padding: "0 18px", borderRadius: 9, border: "none", background: done ? "#F1F2F6" : "#0E9F6E", color: done ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{done ? "Reopen" : "Mark complete"}</button>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={box}>
-              <div style={lbl}>Status</div>
-              <select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ width: "100%", height: 34, marginTop: 4, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff" }}>
-                {(D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].map((x) => x.name) : STATUSES).map((sname) => <option key={sname}>{sname}</option>)}
-              </select>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <div style={box}><div style={lbl}>Priority</div><div style={{ fontSize: 13, marginTop: 4, color: ot.priorityColor || C.ink, fontWeight: 600 }}>{ot.priority || "—"}</div></div>
-              <div style={box}><div style={lbl}>Due</div><div style={{ fontSize: 13, marginTop: 4 }}>{ot.due ? shortDate(ot.due) : "—"}</div></div>
-              <div style={box}><div style={lbl}>Start</div><div style={{ fontSize: 13, marginTop: 4 }}>{ot.start ? shortDate(ot.start) : "—"}</div></div>
-              <div style={box}><div style={lbl}>Updated</div><div style={{ fontSize: 12.5, marginTop: 4 }}>{ot.updated ? new Date(ot.updated).toLocaleDateString() : "—"}</div></div>
-            </div>
-            <div style={box}>
-              <div style={lbl}>Assignees</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                {assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || "#B4B9C4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ fontSize: 13, color: C.faint2 }}>Unassigned</span>}
-              </div>
-            </div>
-            {ot.tags && ot.tags.length > 0 && (
-              <div style={box}><div style={lbl}>Tags</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "#EDEEF2", color: C.sub }}>{t}</span>)}</div></div>
-            )}
-            {cfs.length > 0 && (
-              <div style={box}><div style={{ ...lbl, marginBottom: 6 }}>Custom fields</div><div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{cfs.map((f, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}><span style={{ color: C.sub }}>{f.name}</span><b style={{ fontFamily: C.mono, textAlign: "right" }}>{String(f.value)}</b></div>)}</div></div>
-            )}
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-              <button onClick={() => { const first = D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].find((x) => x.type === "closed" || /done|complete/i.test(x.name))?.name : "done"; setStatus(done ? (D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list][0].name : "to do") : (first || "done")); }} style={{ flex: 1, height: 38, borderRadius: 9, border: "none", background: done ? "#F1F2F6" : "#0E9F6E", color: done ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{done ? "Reopen" : "Mark complete"}</button>
+          {/* ACTIVITY / COMMENTS (right rail) */}
+          <div style={{ borderLeft: "1px solid " + C.line, background: C.panel, overflow: "auto", padding: "18px 18px" }}>
+            <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Activity {comments ? "· " + comments.length : ""}</div>
+            {loading && !comments && <div style={{ fontSize: 13, color: C.faint2 }}>Loading…</div>}
+            {comments && comments.length === 0 && <div style={{ fontSize: 13, color: C.faint2 }}>No comments yet.</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {(comments || []).map((c) => (
+                <div key={c.id}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: c.user?.color || "#5B4BE8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{c.user?.initials || (c.user?.username || "?")[0]}</div>
+                    <b style={{ fontSize: 12.5 }}>{c.user?.username || "User"}</b>
+                    <span style={{ fontSize: 11, color: C.faint2 }}>{c.date ? new Date(Number(c.date)).toLocaleString() : ""}</span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", color: C.ink, background: "#fff", border: "1px solid " + C.line, borderRadius: 10, padding: "9px 12px" }}>{c.comment_text || (c.comment || []).map((x) => x.text).join("")}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
