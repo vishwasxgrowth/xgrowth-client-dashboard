@@ -11,6 +11,7 @@ const NAME = import.meta.env.VITE_CLIENT_NAME || "Your Dashboard";
 const ACCOUNT = import.meta.env.VITE_CLIENT_ADMOB_ACCOUNT || "";
 const FOLDER = import.meta.env.VITE_CLIENT_CLICKUP_FOLDER || "";
 const DEV_TOKEN = import.meta.env.VITE_DEV_ACCESS_TOKEN || "";
+const PROXY = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").trim();
 
 function Login({ onSignIn }) {
   return (
@@ -31,7 +32,7 @@ function Center({ children }) { return <div style={{ minHeight: "100vh", display
 
 function Shell() {
   const auth = useContext(AuthContext);
-  const usingDevToken = !!DEV_TOKEN;
+  const usingDevToken = !!DEV_TOKEN || !!PROXY;
   const token = usingDevToken ? DEV_TOKEN : auth.token;
   const isSignedIn = usingDevToken || auth.isSignedIn;
   const isLoading = usingDevToken ? false : auth.isLoading;
