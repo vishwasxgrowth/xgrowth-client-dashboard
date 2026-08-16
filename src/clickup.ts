@@ -1,24 +1,61 @@
 // @ts-nocheck
 const TEAM_ID = "9012725808";
-export async function getClickupTasks(folderId, functionsBase) {
-  const base = (functionsBase || "").replace(/\/$/, "");
-  if (!base) throw new Error("ClickUp proxy not configured");
-  const all = [];
-  for (let page = 0; ; page++) {
-    const qs = new URLSearchParams({ include_closed: "true", subtasks: "true", page: String(page) });
-    qs.append("folder_ids[]", folderId);
-    const resp = await fetch(base + "/clickup/api/v2/team/" + TEAM_ID + "/task?" + qs.toString());
-    if (!resp.ok) throw new Error("ClickUp proxy " + resp.status);
-    const data = await resp.json();
-    const batch = data.tasks || [];
-    for (const t of batch) all.push({
-      id: t.id, name: t.name, status: t.status?.status || "to do",
-      assignee: (t.assignees && t.assignees[0] && (t.assignees[0].username || t.assignees[0].email)) || null,
-      priority: (t.priority && t.priority.priority) || null,
-      due: t.due_date ? new Date(Number(t.due_date)).toISOString().slice(0, 10) : null,
-      tags: (t.tags || []).map((x) => x.name), list: t.list?.name || "Tasks", app: null,
-    });
-    if (data.last_page === true || batch.length < 100 || page > 100) break;
+const base = () => (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").replace(/\/$/, "");
+async function cu(path, opts) {
+  const b = base(); if (!b) throw new Error("ClickUp proxy not configured");
+  const r = await fetch(b + "/clickup/api/v2" + path, opts);
+  if (!r.ok) throw new Error("ClickUp " + r.status + ": " + (await r.text()).slice(0, 200));
+  return r.json();
+}
+function fmtCF(f) {
+  try {
+    const v = f.value;
+    if (f.type === "drop_down") { const o = (f.type_config?.options || []).find((x) => x.orderindex === v || x.id === v); return o ? o.name : String(v); }
+    if (f.type === "labels") { const opts = f.type_config?.options || []; return (Array.isArray(v) ? v : [v]).map((id) => (opts.find((o) => o.id === id) || {}).label || id).join(", "); }
+    if (f.type === "date") return new Date(Number(v)).toLocaleDateString();
+    if (f.type === "users") return (Array.isArray(v) ? v : [v]).map((u) => u.username || u).join(", ");
+    if (f.type === "currency") return "$" + v;
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  } catch { return ""; }
+}
+function mapTask(t, listName) {
+  return {
+    id: t.id, name: t.name,
+    status: t.status?.status || "to do", statusColor: t.status?.color || "#9AA0AE",
+    assignee: t.assignees?.[0]?.username || null,
+    assignees: (t.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials })),
+    priority: t.priority?.priority || null, priorityColor: t.priority?.color || null,
+    due: t.due_date ? new Date(Number(t.due_date)).toISOString().slice(0, 10) : null,
+    start: t.start_date ? new Date(Number(t.start_date)).toISOString().slice(0, 10) : null,
+    created: t.date_created ? Number(t.date_created) : null,
+    updated: t.date_updated ? Number(t.date_updated) : null,
+    tags: (t.tags || []).map((x) => x.name),
+    url: t.url, list: listName, app: null,
+    desc: t.text_content || t.description || "",
+    customFields: (t.custom_fields || []).filter((f) => f.value !== undefined && f.value !== null && f.value !== "").map((f) => ({ name: f.name, value: fmtCF(f) })),
+    subtaskCount: (t.subtasks || []).length,
+    commentCount: t.comment_count || 0,
+  };
+}
+export async function getFolderData(folderId) {
+  const folder = await cu("/folder/" + folderId);
+  const lists = folder.lists || [];
+  const listsMeta = {}; const tasks = [];
+  for (const l of lists) {
+    listsMeta[l.name] = (l.statuses || []).slice().sort((a, b) => a.orderindex - b.orderindex).map((s) => ({ name: s.status, color: s.color, type: s.type }));
+    for (let page = 0; ; page++) {
+      const qs = new URLSearchParams({ include_closed: "true", subtasks: "true", page: String(page) });
+      const data = await cu("/list/" + l.id + "/task?" + qs.toString());
+      const batch = data.tasks || [];
+      for (const t of batch) tasks.push(mapTask(t, l.name));
+      if (data.last_page === true || batch.length < 100 || page > 50) break;
+    }
   }
-  return all;
+  return { listsMeta, tasks };
+}
+export async function getTaskDetail(taskId) { return cu("/task/" + taskId + "?include_subtasks=true"); }
+export async function getTaskComments(taskId) { const d = await cu("/task/" + taskId + "/comment"); return d.comments || []; }
+export async function updateTaskStatus(taskId, status) {
+  return cu("/task/" + taskId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
 }

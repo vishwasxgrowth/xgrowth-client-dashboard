@@ -41,7 +41,7 @@ function applyCors(req, res) {
   const origin = req.headers.origin;
   if (origin && ALLOWED.has(origin)) res.set("Access-Control-Allow-Origin", origin);
   res.set("Vary", "Origin");
-  res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type, X-Client-Id");
 }
 function restQuery(originalUrl) {

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as demo from "./data";
 import { generateMediationReport } from "./admob";
-import { getClickupTasks } from "./clickup";
+import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
 const fmtDate = (v) => (v && v.length === 8 ? v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6, 8) : v);
@@ -38,7 +38,7 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     for (const ds of dates) { const r = dayRow(app, ds); revenue += r.revenue; impressions += r.impressions; requests += r.requests; matched += r.matched; clicks += r.clicks; }
     return { revenue, impressions, requests, matched, clicks, dau: 0, ecpm: impressions ? (revenue / impressions) * 1000 : 0, arpdau: 0, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 };
   };
-  let TASKS = demo.TASKS;
-  try { const t = await getClickupTasks(folderId, import.meta.env.VITE_FUNCTIONS_BASE_URL); if (t.length) TASKS = t; } catch (e) {}
-  return { TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults };
+  let TASKS = demo.TASKS; let LISTS_META = null;
+  try { const { listsMeta, tasks } = await getFolderData(folderId); if (tasks.length) { TASKS = tasks; LISTS_META = listsMeta; } } catch (e) {}
+  return { TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus };
 }

@@ -107,6 +107,7 @@ export default function XgrowthOps() {
   const flash = (text) => { clearTimeout(tt.current); setToast(text); tt.current = setTimeout(() => setToast(null), 2600); };
   const persist = (nextTasks, thr) => { const at = new Date().toISOString(); try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, at, tasks: nextTasks == null ? tasks : nextTasks, threshold: thr == null ? threshold : thr })); setSavedAt(at); } catch (e) {} };
   const patchTask = (id, patch) => setTasks((ts) => { const next = ts.map((t) => (t.id === id ? { ...t, ...patch } : t)); persist(next); return next; });
+  const onMove = (id, statusName) => { patchTask(id, { status: statusName }); if (D.updateTaskStatus) D.updateTaskStatus(id, statusName).then(() => flash("Moved to " + statusName + " in ClickUp")).catch(() => flash("Could not update ClickUp")); };
   const resetSaved = () => { try { localStorage.removeItem(SAVE_KEY); } catch (e) {} setTasks(D.TASKS.map((t) => ({ ...t }))); setSavedAt(null); setOpenTask(null); flash("Reset to the ClickUp snapshot"); };
 
   const R = useMemo(() => computeDates(range, cs, ce), [range, cs, ce]);
@@ -159,7 +160,7 @@ export default function XgrowthOps() {
           {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
           {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
           {page === "tests" && <TestsTab {...{ q, tfilter, setTfilter, openTest: setTestId }} />}
-          {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq }} />}
+          {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
         </div>
       </div>
@@ -456,43 +457,94 @@ function TaskList({ rows }) {
     </div>
   );
 }
-function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq }) {
+function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }) {
+  const meta = D.LISTS_META;
+  const listNames = meta ? Object.keys(meta) : LISTS;
   const tqq = tq.trim().toLowerCase();
   const filtered = tasks.filter((t) => (tlist === "All lists" || t.list === tlist) && (tassignee === "All assignees" || t.assignee === tassignee) && (!tqq || t.name.toLowerCase().includes(tqq)));
   const od = tasks.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done");
   const dtoday = tasks.filter((t) => t.due === D.TODAY && groupId(t.status) !== "done");
+  const doneCount = filtered.filter((t) => groupId(t.status) === "done").length;
+  const pctDone = filtered.length ? Math.round((doneCount / filtered.length) * 100) : 0;
+
+  const useReal = !!(meta && tlist !== "All lists" && meta[tlist]);
+  const columns = useReal
+    ? meta[tlist].map((s) => ({ label: s.name, color: s.color || "#9AA0AE", key: s.name, type: s.type }))
+    : ["todo", "progress", "waiting", "blocked", "done"].map((gid) => ({ label: GROUPS[gid].label, color: GROUPS[gid].dot, key: gid }));
+  const colTasks = (col) => filtered.filter((t) => (useReal ? t.status === col.key : groupId(t.status) === col.key));
+
   const order = { blocked: 0, progress: 1, waiting: 2, todo: 3, done: 4 };
   const rows = filtered.slice().sort((a, b) => order[groupId(a.status)] - order[groupId(b.status)] || (a.due || "9").localeCompare(b.due || "9")).map(taskView);
-  const board = ["todo", "progress", "waiting", "blocked", "done"].map((gid) => ({ label: GROUPS[gid].label, color: GROUPS[gid].dot, tasks: filtered.filter((t) => groupId(t.status) === gid).map(taskView) }));
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: "#fff" };
+
+  const [dragId, setDragId] = useState(null);
+  const [overCol, setOverCol] = useState(null);
+  const drop = (colKey) => { if (dragId && useReal) onMove(dragId, colKey); setDragId(null); setOverCol(null); };
+
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-        <div style={{ ...card, padding: 14 }}><div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>Overdue</div><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, color: od.length ? "#C31C2B" : C.ink }}>{od.length}</div></div>
-        <div style={{ ...card, padding: 14 }}><div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>Due today</div><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600 }}>{dtoday.length}</div></div>
-        <div style={{ ...card, padding: 14 }}><div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>Open tasks</div><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600 }}>{tasks.filter((t) => groupId(t.status) !== "done").length}</div></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 12 }}>
+        {[{ label: "Overdue", v: od.length, tone: od.length ? "#C31C2B" : C.ink, bg: od.length ? "#FDECEE" : "#fff" },
+          { label: "Due today", v: dtoday.length, tone: C.ink, bg: "#fff" },
+          { label: "Open tasks", v: tasks.filter((t) => groupId(t.status) !== "done").length, tone: C.ink, bg: "#fff" }].map((k) => (
+          <div key={k.label} style={{ ...card, padding: 14, background: k.bg }}>
+            <div style={{ fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600, marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, color: k.tone }}>{k.v}</div>
+          </div>
+        ))}
       </div>
+
+      {/* gamified progress bar for the current view */}
+      <div style={{ ...card, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap" }}>{tlist === "All lists" ? "All lists" : tlist} · completion</div>
+        <div style={{ flex: 1, height: 10, borderRadius: 6, background: "#EDEEF2", overflow: "hidden" }}>
+          <div style={{ width: pctDone + "%", height: "100%", background: "linear-gradient(90deg,#5B4BE8,#0E9F6E)", transition: "width .4s" }} />
+        </div>
+        <div style={{ fontFamily: C.mono, fontSize: 13, fontWeight: 700, color: pctDone >= 80 ? "#0B7A55" : C.ink }}>{pctDone}%{pctDone === 100 ? " 🎉" : ""}</div>
+      </div>
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>{[["list", "List"], ["board", "Board"]].map(([id, label]) => <button key={id} onClick={() => setTview(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: tview === id ? 650 : 550, padding: "5px 14px", borderRadius: 7, background: tview === id ? "#fff" : "transparent", color: tview === id ? C.ink : "#6B7180" }}>{label}</button>)}</div>
-        <select value={tlist} onChange={(e) => setTlist(e.target.value)} style={sel}>{["All lists", ...LISTS].map((l) => <option key={l}>{l}</option>)}</select>
+        <select value={tlist} onChange={(e) => setTlist(e.target.value)} style={sel}>{["All lists", ...listNames].map((l) => <option key={l}>{l}</option>)}</select>
         <select value={tassignee} onChange={(e) => setTassignee(e.target.value)} style={sel}>{["All assignees", ...D.MEMBERS.map((m) => m.name)].map((l) => <option key={l}>{l}</option>)}</select>
         <input value={tq} onChange={(e) => setTq(e.target.value)} placeholder="Filter tasks…" style={{ ...sel, width: 180 }} />
+        {tview === "board" && !useReal && <span style={{ fontSize: 11.5, color: C.faint2 }}>Pick a specific list to drag & drop with its real statuses</span>}
       </div>
+
       {tview === "list" ? (rows.length ? <TaskList rows={rows} /> : <Empty>No tasks match.</Empty>) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 12, alignItems: "start" }}>
-          {board.map((col) => (
-            <div key={col.label} style={{ ...card, padding: 10, background: C.panel }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, padding: "2px 4px" }}><span style={{ width: 8, height: 8, borderRadius: "50%", background: col.color }} /><b style={{ fontSize: 12.5 }}>{col.label}</b><span style={{ fontFamily: C.mono, fontSize: 11, color: C.faint2 }}>{col.tasks.length}</span></div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {col.tasks.map((t) => (
-                  <div key={t.id} onClick={t.open} style={{ ...card, padding: 10, cursor: "pointer" }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 550, color: t.nfg, textDecoration: t.strike, marginBottom: 6 }}>{t.name}</div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>{t.hasPriority && <Pill fg={t.pfg} bg={t.pbg}>{t.priority}</Pill>}<div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 10.5, color: t.dfg }}>{t.due}</span><div style={{ width: 22, height: 22, borderRadius: "50%", background: t.acolor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{t.ainit}</div></div>
-                  </div>
-                ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(" + columns.length + ",minmax(210px,1fr))", gap: 12, alignItems: "start", overflowX: "auto" }}>
+          {columns.map((col) => {
+            const list = colTasks(col);
+            const on = overCol === col.key;
+            return (
+              <div key={col.key}
+                onDragOver={(e) => { if (useReal) { e.preventDefault(); setOverCol(col.key); } }}
+                onDragLeave={() => setOverCol((c) => (c === col.key ? null : c))}
+                onDrop={() => drop(col.key)}
+                style={{ ...card, padding: 10, background: on ? "#F3F1FE" : C.panel, borderColor: on ? C.accent : C.line, borderTop: "3px solid " + col.color, transition: "background .15s" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10, padding: "2px 4px" }}>
+                  <span style={{ width: 9, height: 9, borderRadius: "50%", background: col.color }} />
+                  <b style={{ fontSize: 12.5 }}>{col.label}</b>
+                  <span style={{ fontFamily: C.mono, fontSize: 11, color: "#fff", background: col.color, borderRadius: 20, padding: "0 7px" }}>{list.length}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, minHeight: 20 }}>
+                  {list.map((t) => { const tv = taskView(t); return (
+                    <div key={t.id} draggable={useReal} onDragStart={() => setDragId(t.id)} onDragEnd={() => { setDragId(null); setOverCol(null); }} onClick={tv.open}
+                      style={{ ...card, padding: 10, cursor: useReal ? "grab" : "pointer", opacity: dragId === t.id ? 0.4 : 1, borderLeft: "3px solid " + (t.statusColor || col.color) }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 550, color: tv.nfg, textDecoration: tv.strike, marginBottom: 6 }}>{t.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {tv.hasPriority && <Pill fg={tv.pfg} bg={tv.pbg}>{tv.priority}</Pill>}
+                        {t.commentCount > 0 && <span style={{ fontSize: 10.5, color: C.faint2 }}>💬 {t.commentCount}</span>}
+                        <div style={{ flex: 1 }} />
+                        <span style={{ fontFamily: C.mono, fontSize: 10.5, color: tv.dfg }}>{tv.due}</span>
+                        <div style={{ width: 22, height: 22, borderRadius: "50%", background: tv.acolor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{tv.ainit}</div>
+                      </div>
+                    </div>
+                  ); })}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </>
@@ -534,31 +586,109 @@ function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSa
 }
 
 function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash }) {
-  const ot = tasks.find((t) => t.id === openTask); if (!ot) return null;
+  const ot = tasks.find((t) => t.id === openTask);
+  const [detail, setDetail] = useState(null);
+  const [comments, setComments] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!ot || !D.getTaskDetail) return;
+    let live = true; setLoading(true); setDetail(null); setComments(null);
+    Promise.allSettled([D.getTaskDetail(ot.id), D.getTaskComments ? D.getTaskComments(ot.id) : Promise.resolve([])])
+      .then(([d, c]) => { if (!live) return; if (d.status === "fulfilled") setDetail(d.value); if (c.status === "fulfilled") setComments(c.value); })
+      .finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, [ot && ot.id]);
+  if (!ot) return null;
   const g = group(ot.status), done = groupId(ot.status) === "done";
-  const app = ot.app ? D.APPS.find((a) => a.id === ot.app) : null;
-  const sel = { width: "100%", height: 34, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff", marginTop: 4 };
-  const lbl = { fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 };
+  const setStatus = (v) => { patchTask(ot.id, { status: v }); if (D.updateTaskStatus) D.updateTaskStatus(ot.id, v).then(() => flash("Updated in ClickUp")).catch(() => flash("Could not update ClickUp")); };
+  const d = detail || {};
+  const desc = ot.desc || d.text_content || d.description || "";
+  const cfs = ot.customFields || (d.custom_fields || []).filter((f) => f.value != null && f.value !== "").map((f) => ({ name: f.name, value: String(f.value) }));
+  const subtasks = d.subtasks || [];
+  const assignees = ot.assignees && ot.assignees.length ? ot.assignees : (d.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials }));
+  const lbl = { fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600, letterSpacing: ".03em" };
+  const box = { background: C.panel, border: "1px solid " + C.line, borderRadius: 10, padding: "10px 12px" };
+
   return (
-    <>
-      <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.28)" }} />
-      <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 420, background: "#fff", boxShadow: "-8px 0 30px rgba(0,0,0,.12)", padding: 22, overflow: "auto", fontFamily: C.sans }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 14 }}><Pill fg={g.fg} bg={g.bg}>{ot.status}</Pill><div style={{ flex: 1 }} /><button onClick={() => setOpenTask(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 20, color: C.faint }}>×</button></div>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 16 }}>{ot.name}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
-          <div><div style={lbl}>Status</div><select value={ot.status} onChange={(e) => patchTask(ot.id, { status: e.target.value })} style={sel}>{STATUSES.map((s) => <option key={s}>{s}</option>)}</select></div>
-          <div><div style={lbl}>Assignee</div><select value={ot.assignee || "Unassigned"} onChange={(e) => patchTask(ot.id, { assignee: e.target.value === "Unassigned" ? null : e.target.value })} style={sel}>{["Unassigned", ...D.MEMBERS.map((x) => x.name)].map((s) => <option key={s}>{s}</option>)}</select></div>
-          <div><div style={lbl}>Priority</div><select value={ot.priority || "none"} onChange={(e) => patchTask(ot.id, { priority: e.target.value === "none" ? null : e.target.value })} style={sel}>{PRIORITIES.map((s) => <option key={s}>{s}</option>)}</select></div>
-          <div><div style={lbl}>Due</div><input type="date" value={ot.due || ""} onChange={(e) => patchTask(ot.id, { due: e.target.value || null })} style={sel} /></div>
-          <div><div style={lbl}>List</div><div style={{ fontSize: 13, marginTop: 6 }}>{ot.list}</div></div>
-          <div><div style={lbl}>App</div><div style={{ fontSize: 13, marginTop: 6 }}>{app ? app.name : "—"}</div></div>
+    <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "8vh 10vw", zIndex: 30 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "80vw", height: "84vh", background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "18px 22px", borderBottom: "1px solid " + C.line }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || g.fg }}>{ot.status}</span>
+              <span style={{ fontSize: 12, color: C.faint2 }}>{ot.list}</span>
+              {ot.url && <a href={ot.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 700 }}>{ot.name}</div>
+          </div>
+          <button onClick={() => setOpenTask(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 24, color: C.faint, lineHeight: 1 }}>×</button>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => { patchTask(ot.id, { status: done ? "to do" : "done" }); flash(done ? "Reopened in ClickUp" : "Marked complete in ClickUp"); }} style={{ flex: 1, height: 36, borderRadius: 9, border: "none", background: done ? "#F1F2F6" : "#0E9F6E", color: done ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{done ? "Reopen task" : "Mark complete"}</button>
-          <button onClick={() => { setTasks((s) => { const next = s.filter((t) => t.id !== ot.id); persist(next); return next; }); setOpenTask(null); flash("Deleted from ClickUp"); }} style={{ height: 36, padding: "0 14px", borderRadius: 9, border: "1px solid " + C.line, background: "#fff", color: "#C31C2B", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Delete</button>
+
+        <div style={{ flex: 1, overflow: "auto", padding: 22, display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 22 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+            <div>
+              <div style={{ ...lbl, marginBottom: 6 }}>Description</div>
+              <div style={{ fontSize: 13.5, lineHeight: 1.55, color: desc ? C.ink : C.faint2, whiteSpace: "pre-wrap" }}>{desc || (loading ? "Loading…" : "No description")}</div>
+            </div>
+            {subtasks.length > 0 && (
+              <div>
+                <div style={{ ...lbl, marginBottom: 6 }}>Subtasks ({subtasks.length})</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {subtasks.map((st) => <div key={st.id} style={{ ...box, display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}><span style={{ width: 8, height: 8, borderRadius: 2, background: st.status?.color || "#9AA0AE" }} />{st.name}<span style={{ flex: 1 }} /><span style={{ fontSize: 11, color: C.faint2 }}>{st.status?.status}</span></div>)}
+                </div>
+              </div>
+            )}
+            <div>
+              <div style={{ ...lbl, marginBottom: 6 }}>Comments {comments ? "(" + comments.length + ")" : ""}</div>
+              {loading && !comments && <div style={{ fontSize: 13, color: C.faint2 }}>Loading comments…</div>}
+              {comments && comments.length === 0 && <div style={{ fontSize: 13, color: C.faint2 }}>No comments.</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {(comments || []).map((c) => (
+                  <div key={c.id} style={box}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                      <div style={{ width: 24, height: 24, borderRadius: "50%", background: c.user?.color || "#5B4BE8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{(c.user?.initials) || (c.user?.username || "?")[0]}</div>
+                      <b style={{ fontSize: 12.5 }}>{c.user?.username || "User"}</b>
+                      <span style={{ fontSize: 11, color: C.faint2 }}>{c.date ? new Date(Number(c.date)).toLocaleString() : ""}</span>
+                    </div>
+                    <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{c.comment_text || (c.comment || []).map((x) => x.text).join("")}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={box}>
+              <div style={lbl}>Status</div>
+              <select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ width: "100%", height: 34, marginTop: 4, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff" }}>
+                {(D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].map((x) => x.name) : STATUSES).map((sname) => <option key={sname}>{sname}</option>)}
+              </select>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={box}><div style={lbl}>Priority</div><div style={{ fontSize: 13, marginTop: 4, color: ot.priorityColor || C.ink, fontWeight: 600 }}>{ot.priority || "—"}</div></div>
+              <div style={box}><div style={lbl}>Due</div><div style={{ fontSize: 13, marginTop: 4 }}>{ot.due ? shortDate(ot.due) : "—"}</div></div>
+              <div style={box}><div style={lbl}>Start</div><div style={{ fontSize: 13, marginTop: 4 }}>{ot.start ? shortDate(ot.start) : "—"}</div></div>
+              <div style={box}><div style={lbl}>Updated</div><div style={{ fontSize: 12.5, marginTop: 4 }}>{ot.updated ? new Date(ot.updated).toLocaleDateString() : "—"}</div></div>
+            </div>
+            <div style={box}>
+              <div style={lbl}>Assignees</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                {assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || "#B4B9C4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ fontSize: 13, color: C.faint2 }}>Unassigned</span>}
+              </div>
+            </div>
+            {ot.tags && ot.tags.length > 0 && (
+              <div style={box}><div style={lbl}>Tags</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "#EDEEF2", color: C.sub }}>{t}</span>)}</div></div>
+            )}
+            {cfs.length > 0 && (
+              <div style={box}><div style={{ ...lbl, marginBottom: 6 }}>Custom fields</div><div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{cfs.map((f, i) => <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}><span style={{ color: C.sub }}>{f.name}</span><b style={{ fontFamily: C.mono, textAlign: "right" }}>{String(f.value)}</b></div>)}</div></div>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+              <button onClick={() => { const first = D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].find((x) => x.type === "closed" || /done|complete/i.test(x.name))?.name : "done"; setStatus(done ? (D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list][0].name : "to do") : (first || "done")); }} style={{ flex: 1, height: 38, borderRadius: 9, border: "none", background: done ? "#F1F2F6" : "#0E9F6E", color: done ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{done ? "Reopen" : "Mark complete"}</button>
+            </div>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
