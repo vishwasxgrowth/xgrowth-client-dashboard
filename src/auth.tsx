@@ -12,6 +12,7 @@ export function AuthProvider({ children }) {
   const [client, setClient] = useState(null);
 
   useEffect(() => {
+    if (!CLIENT_ID) { setReady(true); return; } // proxy mode: no Google login needed
     const s = document.createElement("script");
     s.src = "https://accounts.google.com/gsi/client"; s.async = true; s.defer = true;
     s.onload = () => {
