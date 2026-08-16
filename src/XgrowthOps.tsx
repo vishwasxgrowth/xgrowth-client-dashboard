@@ -82,6 +82,7 @@ export default function XgrowthOps() {
   const [sortKey, setSortKey] = useState("revenue");
   const [sortDir, setSortDir] = useState(-1);
   const [q, setQ] = useState("");
+  const [selApps, setSelApps] = useState([]);
   const [appId, setAppId] = useState(null);
   const [appTab, setAppTab] = useState("dashboard");
   const [chartDays, setChartDays] = useState(30);
@@ -151,12 +152,12 @@ export default function XgrowthOps() {
           <div><div style={{ fontSize: 16, fontWeight: 700 }}>{pageTitle}</div>{page === "dashboard" && <div style={{ fontSize: 11.5, color: C.faint }}>{R.sub}</div>}{page === "tasks" && <div style={{ fontSize: 11.5, color: C.faint }}>ClickUp · JedyApps</div>}</div>
           <div style={{ flex: 1 }} />
           <button onClick={() => openCreate(null)} style={{ height: 34, padding: "0 14px", borderRadius: 9, border: "none", background: C.accent, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>+ New task</button>
-          <input value={q} onChange={(e) => { setQ(e.target.value); setTq(e.target.value); }} placeholder="Search…" style={{ height: 34, width: 200, borderRadius: 9, border: "1px solid " + C.line, padding: "0 12px", fontSize: 13, outline: "none", background: C.panel }} />
+          <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
-          {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
-          {page === "apps" && <AppsTab {...{ R, q, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
+          {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
+          {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
           {page === "tests" && <TestsTab {...{ q, tfilter, setTfilter, openTest: setTestId }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
@@ -171,49 +172,94 @@ export default function XgrowthOps() {
   );
 }
 
-function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp }) {
+const TIERS = {
+  T1: { name: "Core", label: "Tier 1", color: "#4E3FD8", bg: "#EFEDFF", drop: 10, respond: "same-day" },
+  T2: { name: "Growth", label: "Tier 2", color: "#0B7A55", bg: "#E6F6F0", drop: 20, respond: "within 24h" },
+  T3: { name: "Stable", label: "Tier 3", color: "#B45309", bg: "#FEF3C7", drop: 30, respond: "within 48h" },
+  T4: { name: "Long-Tail", label: "Tier 4", color: "#5B6172", bg: "#F1F2F6", drop: 40, respond: "within 48h" },
+};
+function tierOf(rev30) { return rev30 >= 15000 ? "T1" : rev30 >= 3000 ? "T2" : rev30 >= 500 ? "T3" : "T4"; }
+function totalsFor(list, dates) { let revenue = 0, imp = 0, dau = 0; for (const app of list) for (const ds of dates) { const r = D.dayRow(app, ds); revenue += r.revenue; imp += r.impressions; dau += r.dau; } return { revenue, imp, dau, ecpm: imp ? (revenue / imp) * 1000 : 0, arpdau: dau ? revenue / dau : 0 }; }
+
+function AppMultiSelect({ apps, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [qq, setQq] = useState("");
+  const chosen = apps.filter((a) => value.includes(a.id));
+  const opts = apps.filter((a) => !value.includes(a.id) && (!qq || a.name.toLowerCase().includes(qq.toLowerCase())));
+  return (
+    <div style={{ position: "relative", minWidth: 260, maxWidth: 360 }}>
+      <div onClick={() => setOpen(true)} style={{ display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", minHeight: 34, border: "1px solid " + C.line, borderRadius: 9, padding: "3px 8px", background: C.panel, cursor: "text" }}>
+        {chosen.map((a) => (
+          <span key={a.id} style={{ display: "flex", alignItems: "center", gap: 4, background: "#fff", border: "1px solid " + C.line, borderRadius: 6, padding: "1px 6px", fontSize: 11.5 }}>
+            <span style={{ width: 7, height: 7, borderRadius: 2, background: appColor(a.id) }} />
+            {a.name.length > 14 ? a.name.slice(0, 14) + "…" : a.name}
+            <span onClick={(e) => { e.stopPropagation(); onChange(value.filter((id) => id !== a.id)); }} style={{ cursor: "pointer", color: C.faint }}>×</span>
+          </span>
+        ))}
+        <input value={qq} onChange={(e) => { setQq(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} placeholder={chosen.length ? "" : "Filter apps…"} style={{ border: "none", outline: "none", background: "transparent", fontSize: 13, flex: 1, minWidth: 80 }} />
+      </div>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 20 }} />
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 21, background: "#fff", border: "1px solid " + C.line, borderRadius: 10, boxShadow: "0 12px 30px rgba(0,0,0,.14)", maxHeight: 300, overflow: "auto" }}>
+            {value.length > 0 && <div onClick={() => onChange([])} style={{ padding: "8px 12px", fontSize: 12, color: C.accent, cursor: "pointer", borderBottom: "1px solid " + C.line, fontWeight: 600 }}>Clear selection ({value.length})</div>}
+            {opts.length === 0 && <div style={{ padding: "10px 12px", fontSize: 12.5, color: C.faint2 }}>No more apps</div>}
+            {opts.map((a) => (
+              <div key={a.id} onClick={() => { onChange([...value, a.id]); setQq(""); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 13, cursor: "pointer" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#F6F7F9")} onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}>
+                <span style={{ width: 8, height: 8, borderRadius: 2, background: appColor(a.id) }} />{a.name}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, openApp }) {
+  const [tierFilter, setTierFilter] = useState([]);
+  const tiers = useMemo(() => { const win = D.rangeDates(30, 1); const m = {}; for (const app of D.APPS) m[app.id] = tierOf(D.aggregate(app, win).revenue); return m; }, []);
+  const pool = useMemo(() => (selApps.length ? D.APPS.filter((a) => selApps.includes(a.id)) : D.APPS), [selApps]);
+
   const kpis = useMemo(() => {
-    const cur = totals(R.cur), prv = totals(R.prev);
-    const sparkDaily = D.rangeDates(14, 1).map((ds) => totals([ds]));
+    const cur = totalsFor(pool, R.cur), prv = totalsFor(pool, R.prev);
+    const sparkDaily = D.rangeDates(14, 1).map((ds) => totalsFor(pool, [ds]));
     return [
       { label: "Revenue", value: money(cur.revenue), c: cur.revenue, p: prv.revenue, series: sparkDaily.map((d) => d.revenue) },
       { label: "eCPM", value: money2(cur.ecpm), c: cur.ecpm, p: prv.ecpm, series: sparkDaily.map((d) => d.ecpm) },
       { label: "Impressions", value: compact(cur.imp), c: cur.imp, p: prv.imp, series: sparkDaily.map((d) => d.imp) },
     ].map((k) => ({ ...k, d: delta(k.c, k.p), spark: sparkPath(k.series, 112, 30) }));
-  }, [R]);
+  }, [R, pool]);
 
   const metricCols = [
-    { k: "revenue", label: "Estimated earnings", fmt: money },
-    { k: "ecpm", label: "Observed eCPM", fmt: money2 },
-    { k: "requests", label: "Requests", fmt: compact },
-    { k: "matchRate", label: "Match rate", fmt: pct },
-    { k: "matched", label: "Matched requests", fmt: compact },
-    { k: "showRate", label: "Show rate", fmt: pct },
-    { k: "impressions", label: "Impressions", fmt: compact },
-    { k: "ctr", label: "CTR", fmt: pct },
-    { k: "clicks", label: "Clicks", fmt: compact },
-    { k: "arpv", label: "Ads ARPV", fmt: money4 },
-    { k: "arpdav", label: "Ads ARPDAV", fmt: money4 },
+    { k: "revenue", label: "Estimated earnings", fmt: money }, { k: "ecpm", label: "Observed eCPM", fmt: money2 },
+    { k: "requests", label: "Requests", fmt: compact }, { k: "matchRate", label: "Match rate", fmt: pct },
+    { k: "matched", label: "Matched requests", fmt: compact }, { k: "showRate", label: "Show rate", fmt: pct },
+    { k: "impressions", label: "Impressions", fmt: compact }, { k: "ctr", label: "CTR", fmt: pct },
+    { k: "clicks", label: "Clicks", fmt: compact }, { k: "arpv", label: "Ads ARPV", fmt: money4 }, { k: "arpdav", label: "Ads ARPDAV", fmt: money4 },
   ];
 
   const { rows, alerts } = useMemo(() => {
     const enrich = (o) => ({ ...o, arpv: o.impressions ? o.revenue / o.impressions : 0, arpdav: o.dau ? o.revenue / o.dau : 0 });
-    const agg = D.APPS.map((app) => ({ app, a: enrich(D.aggregate(app, R.cur)), b: enrich(D.aggregate(app, R.prev)) }));
-    const qq = q.trim().toLowerCase();
-    let list = agg.filter((r) => !qq || r.app.name.toLowerCase().includes(qq));
-    list.sort((x, y) => (sortKey === "name" ? x.app.name.localeCompare(y.app.name) * -sortDir : ((x.a[sortKey] || 0) - (y.a[sortKey] || 0)) * sortDir));
+    let base = tierFilter.length ? pool.filter((a) => tierFilter.includes(tiers[a.id])) : pool;
+    const agg = base.map((app) => ({ app, a: enrich(D.aggregate(app, R.cur)), b: enrich(D.aggregate(app, R.prev)) }));
+    agg.sort((x, y) => (sortKey === "name" ? x.app.name.localeCompare(y.app.name) * -sortDir : ((x.a[sortKey] || 0) - (y.a[sortKey] || 0)) * sortDir));
     let al = 0;
-    const rws = list.map(({ app, a, b }) => {
-      const dr = delta(a.revenue, b.revenue); if (dr.v < -threshold) al++;
+    const rws = agg.map(({ app, a, b }) => {
+      const tk = tiers[app.id], T = TIERS[tk];
+      const rev30 = D.aggregate(app, D.rangeDates(30, 1)).revenue;
+      const dr = delta(a.revenue, b.revenue);
+      if (rev30 >= 1500 && dr.v < -T.drop) al++;
       const cells = metricCols.map((c) => ({ v: c.fmt(a[c.k] || 0), d: delta(a[c.k] || 0, b[c.k] || 0) }));
-      return { id: app.id, name: app.name, meta: app.cat + " · " + app.tier, initials: appInitials(app.name), color: appColor(app.id), cells };
+      return { id: app.id, name: app.name, tierName: T.name, tierColor: T.color, tierBg: T.bg, initials: appInitials(app.name), color: appColor(app.id), cells };
     });
     return { rows: rws, alerts: al };
-  }, [R, q, sortKey, sortDir, threshold]);
+  }, [R, pool, tierFilter, sortKey, sortDir, tiers]);
 
   const sortCol = (k) => { setSortKey(k); setSortDir((d) => (sortKey === k ? -d : -1)); };
-  const APPW = 240, COLW = 132, HEADBG = "#FAFAFC";
-  const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", color: C.faint, padding: "10px 14px", background: HEADBG, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", cursor: "pointer" };
+  const APPW = 250, COLW = 132, HEADBG = "#FAFAFC";
+  const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", padding: "10px 14px", background: HEADBG, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", cursor: "pointer" };
   const cbase = { padding: "10px 14px", borderBottom: "1px solid #F1F2F6", whiteSpace: "nowrap" };
   const caret = (k) => (sortKey === k ? (sortDir === -1 ? " ▼" : " ▲") : "");
 
@@ -241,12 +287,20 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
         ))}
       </div>
 
-      <RevenueChart dates={R.cur} />
+      <RevenueChart dates={R.cur} pool={pool} selectionActive={selApps.length > 0} />
 
-      {alerts > 0 && <div style={{ background: "#FDECEE", border: "1px solid #F8D3D7", color: "#C31C2B", borderRadius: 10, padding: "9px 14px", marginBottom: 14, fontSize: 12.5, fontWeight: 600 }}>{alerts === 1 ? "1 app below threshold" : alerts + " apps below threshold"} (revenue down more than {threshold}%)</div>}
+      {alerts > 0 && <div style={{ background: "#FDECEE", border: "1px solid #F8D3D7", color: "#C31C2B", borderRadius: 10, padding: "9px 14px", marginBottom: 14, fontSize: 12.5, fontWeight: 600 }}>{alerts === 1 ? "1 app flagged" : alerts + " apps flagged"} — revenue drop exceeds its tier threshold</div>}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, color: C.faint }}>Tiers:</span>
+        {["T1", "T2", "T3", "T4"].map((t) => { const on = tierFilter.includes(t); const T = TIERS[t]; return (
+          <button key={t} onClick={() => setTierFilter(on ? tierFilter.filter((x) => x !== t) : [...tierFilter, t])} style={{ border: "1px solid " + (on ? T.color : C.line), background: on ? T.bg : "#fff", color: on ? T.color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20 }}>{T.label} · {T.name}</button>
+        ); })}
+        {tierFilter.length > 0 && <button onClick={() => setTierFilter([])} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear</button>}
+      </div>
 
       <div style={{ ...card, overflow: "hidden" }}>
-        <div style={{ overflow: "auto", maxHeight: "60vh" }}>
+        <div style={{ overflow: "auto", maxHeight: "58vh" }}>
           <table style={{ borderCollapse: "separate", borderSpacing: 0, width: "max-content", minWidth: "100%" }}>
             <thead>
               <tr>
@@ -260,7 +314,10 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
                   <td style={{ ...cbase, position: "sticky", left: 0, zIndex: 1, background: "#fff", width: APPW, minWidth: APPW, borderRight: "1px solid " + C.line }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: r.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{r.initials}</div>
-                      <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: APPW - 60 }}>{r.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{r.meta}</div></div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: APPW - 60 }}>{r.name}</div>
+                        <span style={{ display: "inline-block", marginTop: 3, fontSize: 10, fontWeight: 700, letterSpacing: ".02em", padding: "1px 8px", borderRadius: 20, color: r.tierColor, background: r.tierBg }}>{r.tierName}</span>
+                      </div>
                     </div>
                   </td>
                   {r.cells.map((c, i) => <td key={i} style={{ ...cbase, textAlign: "right" }}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></td>)}
@@ -274,10 +331,10 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, q, sortKey, se
   );
 }
 
-function AppsTab({ R, q, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest }) {
+function AppsTab({ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest }) {
   if (!appId) {
     const qq = q.trim().toLowerCase();
-    const cards = D.APPS.filter((app) => !qq || app.name.toLowerCase().includes(qq)).map((app) => { const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev), d = delta(a.revenue, b.revenue); return { app, rev: money(a.revenue), d, ecpm: money2(a.ecpm), arpdau: money4(a.arpdau), open: tasks.filter((t) => t.app === app.id && groupId(t.status) !== "done").length }; });
+    const cards = D.APPS.filter((app) => (!selApps || !selApps.length || selApps.includes(app.id)) && (!qq || app.name.toLowerCase().includes(qq))).map((app) => { const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev), d = delta(a.revenue, b.revenue); return { app, rev: money(a.revenue), d, ecpm: money2(a.ecpm), arpdau: money4(a.arpdau), open: tasks.filter((t) => t.app === app.id && groupId(t.status) !== "done").length }; });
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
         {cards.map(({ app, rev, d, ecpm, arpdau, open }) => (
@@ -442,9 +499,14 @@ function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSa
         {members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F1F2F6" }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{m.role}</div></div><span style={{ fontFamily: C.mono, fontSize: 12, color: C.sub }}>{m.open} open</span></div>)}
       </div>
       <div style={{ ...card, padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Alert threshold</div>
-        <div style={{ fontSize: 12, color: C.sub, marginBottom: 12 }}>Flag apps whose revenue drops more than this vs the previous period.</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}><input type="range" min="1" max="30" step="1" value={threshold} onChange={(e) => { const v = Number(e.target.value); setThreshold(v); persist(undefined, v); }} style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 16, fontWeight: 600, width: 44, textAlign: "right" }}>{threshold}%</span></div>
+        <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>How apps are tiered</div>
+        <div style={{ fontSize: 12.5, color: C.sub, marginBottom: 8 }}>Each app is assigned a tier by its trailing 30-day ad revenue. The tier sets how large a drop is worth flagging and how quickly to act.</div>
+        {["T1", "T2", "T3", "T4"].map((t) => { const T = TIERS[t]; const rng = t === "T1" ? "$15,000+" : t === "T2" ? "$3,000–$14,999" : t === "T3" ? "$500–$2,999" : "under $500"; return (
+          <div key={t} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: "1px solid #F1F2F6" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 9px", borderRadius: 20, color: T.color, background: T.bg, whiteSpace: "nowrap" }}>{T.label} · {T.name}</span>
+            <span style={{ fontSize: 12.5, color: C.sub }}>{rng} / 30 days · flag a {T.drop}% drop · respond {T.respond}</span>
+          </div>); })}
+        <div style={{ fontSize: 11.5, color: C.faint2, marginTop: 10 }}>Apps below about $50/day are held out of percentage alerts, so tiny-base swings don't create noise.</div>
       </div>
       <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>Workspace changes</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{savedAt ? "Saved " + since(savedAt) : "No local changes yet"}</div></div>
@@ -548,17 +610,18 @@ function smoothPath(pts) {
   return d;
 }
 
-function RevenueChart({ dates }) {
+function RevenueChart({ dates, pool, selectionActive }) {
   const [mode, setMode] = useState("overall");
   const [hov, setHov] = useState(-1);
   const [iso, setIso] = useState(null);
   const [visible, setVisible] = useState(10);
+  useEffect(() => { setIso(null); setVisible(10); }, [selectionActive, pool]);
 
-  const apps = useMemo(() => D.APPS
+  const apps = useMemo(() => pool
     .map((app) => { const vals = dates.map((ds) => D.dayRow(app, ds).revenue); return { app, vals, total: vals.reduce((s, v) => s + v, 0) }; })
-    .sort((a, b) => b.total - a.total), [dates]);
+    .sort((a, b) => b.total - a.total), [dates, pool]);
   const overall = useMemo(() => dates.map((_, i) => apps.reduce((s, a) => s + a.vals[i], 0)), [apps, dates]);
-  const shown = mode === "apps" ? apps.slice(0, visible) : apps;
+  const shown = iso ? apps.filter((a) => a.app.id === iso) : (selectionActive ? apps : apps.slice(0, visible));
 
   const W = 960, H = 300, padL = 58, padR = 18, padT = 18, padB = 34;
   const iw = W - padL - padR, ih = H - padT - padB;
@@ -571,30 +634,45 @@ function RevenueChart({ dates }) {
   const xl = dates.map((ds, i) => ({ i, x: X(i), label: shortDate(ds) })).filter((t) => t.i % step === 0);
   const hovering = hov >= 0 && hov < n;
   const onMove = (e) => { const r = e.currentTarget.getBoundingClientRect(); const f = (e.clientX - r.left) / r.width; setHov(Math.max(0, Math.min(n - 1, Math.round(f * (n - 1))))); };
-  const rows = hovering ? shown.map((a) => ({ id: a.app.id, name: a.app.name, v: a.vals[hov], color: appColor(a.app.id) })).filter((r) => (iso ? r.id === iso : true)).sort((a, b) => b.v - a.v) : [];
+
+  const leftPct = hovering ? (X(hov) / W) * 100 : 0;
+  const clampTx = leftPct < 18 ? "0" : leftPct > 82 ? "-100%" : "-50%";
+  const trows = hovering && mode === "apps" ? shown.map((a) => ({ id: a.app.id, name: a.app.name, v: a.vals[hov], color: appColor(a.app.id) })).sort((x, y) => y.v - x.v) : [];
+  const trShown = trows.slice(0, 5);
   const seg = (on) => ({ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: on ? 650 : 550, padding: "5px 12px", borderRadius: 7, background: on ? "#fff" : "transparent", color: on ? C.ink : "#6B7180", boxShadow: on ? "0 1px 2px rgba(16,24,40,.1)" : "none" });
 
   return (
     <div style={{ ...card, padding: 16, marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4, flexWrap: "wrap" }}>
         <div style={{ fontSize: 14, fontWeight: 700 }}>Revenue trend</div>
+        {iso && <button onClick={() => setIso(null)} style={{ border: "1px solid " + C.line, background: "#fff", cursor: "pointer", borderRadius: 20, padding: "2px 10px", fontSize: 11.5, color: C.sub }}>← all apps</button>}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>
           {[["overall", "Overall"], ["apps", "All apps"]].map(([id, label]) => <button key={id} onClick={() => { setMode(id); setIso(null); }} style={seg(mode === id)}>{label}</button>)}
         </div>
       </div>
 
-      <div style={{ minHeight: 30, display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+      {/* readout box ABOVE the plot (reserved zone; never covers lines) */}
+      <div style={{ position: "relative", height: 92 }}>
         {hovering ? (
-          mode === "overall" ? (
-            <><span style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint }}>{dates[hov]}</span><b style={{ fontFamily: C.mono, fontSize: 15 }}>{money(overall[hov])}</b></>
-          ) : (
-            <><span style={{ fontFamily: C.mono, fontSize: 11.5, color: C.faint, flex: "none" }}>{dates[hov]}</span>
-              <div style={{ display: "flex", gap: 12, overflowX: "auto" }}>
-                {rows.map((r) => <span key={r.id} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, whiteSpace: "nowrap" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: r.color }} />{r.name.length > 18 ? r.name.slice(0, 18) + "…" : r.name} <b style={{ fontFamily: C.mono }}>{money(r.v)}</b></span>)}
-              </div></>
-          )
-        ) : <span style={{ fontSize: 12, color: C.faint2 }}>Hover the chart for exact values</span>}
+          <div style={{ position: "absolute", bottom: 8, left: leftPct + "%", transform: "translateX(" + clampTx + ")", background: "#14161C", color: "#fff", borderRadius: 10, padding: "8px 11px", boxShadow: "0 8px 24px rgba(0,0,0,.22)", minWidth: 150, maxWidth: 300, pointerEvents: "none" }}>
+            <div style={{ fontFamily: C.mono, fontSize: 11, color: "#B4B9C4", marginBottom: 4 }}>{dates[hov]}</div>
+            {mode === "overall" ? (
+              <div style={{ fontSize: 15, fontWeight: 700, fontFamily: C.mono }}>{money(overall[hov])}</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {trShown.map((r) => (
+                  <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: r.color, flex: "none" }} />
+                    <span style={{ maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                    <span style={{ flex: 1 }} /><b style={{ fontFamily: C.mono }}>{money(r.v)}</b>
+                  </div>
+                ))}
+                {trows.length > 5 && <div style={{ fontSize: 10.5, color: "#8A90A0", marginTop: 2 }}>+{trows.length - 5} more</div>}
+              </div>
+            )}
+          </div>
+        ) : <div style={{ position: "absolute", bottom: 8, left: 2, fontSize: 12, color: C.faint2 }}>Hover the chart for exact values</div>}
       </div>
 
       <div style={{ position: "relative" }} onMouseMove={onMove} onMouseLeave={() => setHov(-1)}>
@@ -610,9 +688,9 @@ function RevenueChart({ dates }) {
               {hovering && <circle cx={X(hov)} cy={Y(overall[hov])} r="4.5" fill="#fff" stroke={C.accent} strokeWidth="2.5" />}
             </>
           ) : (
-            shown.map((a) => { const dim = iso && iso !== a.app.id; return <path key={a.app.id} d={smoothPath(a.vals.map((v, i) => [X(i), Y(v)]))} fill="none" stroke={appColor(a.app.id)} strokeWidth={iso === a.app.id ? 2.6 : 1.5} strokeOpacity={dim ? 0.12 : 0.9} />; })
+            shown.map((a) => <path key={a.app.id} d={smoothPath(a.vals.map((v, i) => [X(i), Y(v)]))} fill="none" stroke={appColor(a.app.id)} strokeWidth={shown.length === 1 ? 2.6 : 1.7} strokeOpacity="0.92" />)
           )}
-          {mode === "apps" && hovering && rows.map((r) => { const a = shown.find((x) => x.app.id === r.id); return <circle key={r.id} cx={X(hov)} cy={Y(a.vals[hov])} r="3.2" fill={r.color} />; })}
+          {mode === "apps" && hovering && shown.map((a) => <circle key={a.app.id} cx={X(hov)} cy={Y(a.vals[hov])} r="3.2" fill={appColor(a.app.id)} />)}
           {hovering && <line x1={X(hov)} x2={X(hov)} y1={padT} y2={padT + ih} stroke={C.accent} strokeOpacity="0.35" strokeDasharray="3 3" />}
         </svg>
       </div>
@@ -620,10 +698,10 @@ function RevenueChart({ dates }) {
       {mode === "apps" && (
         <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {shown.map((a) => { const on = iso === a.app.id; return (
-            <button key={a.app.id} onClick={() => setIso(on ? null : a.app.id)} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid " + (on ? appColor(a.app.id) : C.line), background: on ? appColor(a.app.id) + "14" : "#fff", cursor: "pointer", borderRadius: 20, padding: "3px 9px", fontSize: 11.5, color: iso && !on ? "#9AA0AE" : C.ink }}>
+            <button key={a.app.id} onClick={() => setIso(on ? null : a.app.id)} style={{ display: "flex", alignItems: "center", gap: 6, border: "1px solid " + (on ? appColor(a.app.id) : C.line), background: on ? appColor(a.app.id) + "14" : "#fff", cursor: "pointer", borderRadius: 20, padding: "3px 9px", fontSize: 11.5, color: C.ink }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: appColor(a.app.id) }} />{a.app.name.length > 22 ? a.app.name.slice(0, 22) + "…" : a.app.name}
             </button>); })}
-          {visible < apps.length && <button onClick={() => setVisible((v) => v + 10)} style={{ border: "1px dashed " + C.accent, background: C.accentBg, color: C.accentDk, cursor: "pointer", borderRadius: 20, padding: "3px 12px", fontSize: 11.5, fontWeight: 600 }}>Show more apps (+{Math.min(10, apps.length - visible)})</button>}
+          {!selectionActive && !iso && visible < apps.length && <button onClick={() => setVisible((v) => v + 10)} style={{ border: "1px dashed " + C.accent, background: C.accentBg, color: C.accentDk, cursor: "pointer", borderRadius: 20, padding: "3px 12px", fontSize: 11.5, fontWeight: 600 }}>Show more apps (+{Math.min(10, apps.length - visible)})</button>}
         </div>
       )}
     </div>
