@@ -1,0 +1,7 @@
+{
+  "name": "xgrowth-client-functions",
+  "type": "commonjs",
+  "engines": { "node": "20" },
+  "main": "index.js",
+  "dependencies": { "firebase-functions": "^5.0.0" }
+}
