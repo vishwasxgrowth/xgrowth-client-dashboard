@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import D from "./activeData";
+import { parseArms, armMetrics } from "./testConfig";
 const CLIENT_NAME = (import.meta.env.VITE_CLIENT_NAME || "Client");
 
 const C = {
@@ -179,7 +180,7 @@ export default function XgrowthOps() {
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
           {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
-          {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setOpenTask }} />}
+          {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
         </div>
@@ -187,7 +188,7 @@ export default function XgrowthOps() {
 
       {openTask && <Drawer {...{ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash }} />}
       {modal && <CreateModal {...{ modal, setModal, commitCreate }} />}
-      {testId && <TestResults {...{ testId, setTestId, openCreate }} />}
+      {testId && <TestDetail {...{ tasks, testId, setTestId, openCreate }} />}
       {toast && <div style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#14161C", color: "#fff", padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 550, boxShadow: "0 8px 24px rgba(0,0,0,.2)" }}>{toast}</div>}
     </div>
   );
@@ -781,27 +782,176 @@ function CreateModal({ modal, setModal, commitCreate }) {
   );
 }
 
-function TestResults({ testId, setTestId, openCreate }) {
-  const x = D.EXPERIMENTS.find((e) => e.id === testId); if (!x) return null;
-  const g = group(x.status), r = D.experimentResults(x);
-  const fmt = (v, u) => (u === "$" ? (v < 1 ? "$" + v.toFixed(4) : "$" + v.toFixed(2)) : u === "%" ? (v * 100).toFixed(1) + "%" : v.toFixed(2));
-  const win = r.lift > 1 && r.conf > 90;
-  const rec = { title: x.status === "blocked" ? "Blocked." : win ? "Ship it." : r.lift < 0 ? "Roll back." : "Keep running.", bg: x.status === "blocked" ? "#FDECEE" : win ? "#E6F6F0" : "#FEF3C7", bd: x.status === "blocked" ? "#F8D3D7" : win ? "#CBEBDD" : "#FBE7A2", fg: x.status === "blocked" ? "#C31C2B" : win ? "#0B7A55" : "#B45309", body: x.status === "blocked" ? "Resolve the upstream mapping issue before reading results — traffic is not evenly split." : win ? "Variant beats control on the primary metric with enough confidence to roll out to 100%." : r.lift < 0 ? "Variant is underperforming control. Revert and re-test with a narrower change." : "Confidence is below the 95% bar. Continue until the planned end date before deciding." };
+function TestDetail({ tasks, testId, setTestId, openCreate }) {
+  const seed = tasks.find((t) => t.id === testId);
+  const [detail, setDetail] = useState(null);
+  const [units, setUnits] = useState(null);   // ad-unit metrics map
+  const [loading, setLoading] = useState(true);
+  const [vi, setVi] = useState(0);            // selected variant index
+  const [err, setErr] = useState(null);
+  useEffect(() => {
+    let live = true; setLoading(true); setErr(null);
+    (async () => {
+      let d = null;
+      try { d = D.getTaskDetail ? await D.getTaskDetail(testId) : null; } catch (e) {}
+      if (live) setDetail(d);
+      // window from task start/due, else last 14 days
+      const end = (seed && seed.due) ? seed.due : D.TODAY;
+      const start = (seed && seed.start) ? seed.start : D.rangeDates(14, 1)[0];
+      const toRd = (s0) => { const dt = new Date(s0 + "T00:00:00Z"); return { year: dt.getUTCFullYear(), month: dt.getUTCMonth() + 1, day: dt.getUTCDate() }; };
+      try { if (D.adUnitReport) { const m = await D.adUnitReport(toRd(start), toRd(end)); if (live) setUnits(m); } }
+      catch (e) { if (live) setErr("Couldn't load AdMob per-ad-unit data"); }
+      if (live) setLoading(false);
+    })();
+    return () => { live = false; };
+  }, [testId]);
+  if (!seed) return null;
+
+  const desc = (detail && (detail.markdown_description || detail.description)) || seed.desc || "";
+  const arms = useMemo(() => parseArms(desc), [desc]);
+  const baseline = arms.find((a) => a.isBaseline) || arms[0];
+  const variants = arms.filter((a) => a !== baseline);
+  const variant = variants[vi] || null;
+  const unitMap = units || {};
+  const bM = baseline ? armMetrics(baseline, unitMap) : null;
+  const vM = variant ? armMetrics(variant, unitMap) : null;
+
+  const pctD = (a, b) => (b ? ((a - b) / b) * 100 : 0);
+  const lift = (bM && vM && bM.total.revenue) ? pctD(vM.total.revenue, bM.total.revenue) : 0;
+  const absD = (bM && vM) ? vM.total.revenue - bM.total.revenue : 0;
+  const anyData = units && Object.keys(units).length > 0;
+
+  // metric rows (source-tagged like the 2c layout)
+  const rowsRevenue = [
+    ["Estimated earnings", "sum across the arm's units", "AdMob", (t) => money(t.revenue), (t) => t.revenue, "higher better"],
+    ["eCPM", "earnings per 1,000 impressions", "AdMob", (t) => "$" + t.ecpm.toFixed(2), (t) => t.ecpm, "higher better"],
+    ["eRPM", "earnings per 1,000 requests", "Derived", (t) => "$" + t.erpm.toFixed(2), (t) => t.erpm, "higher better"],
+    ["Revenue per impression", "earnings ÷ impressions", "Derived", (t) => "$" + t.rpi.toFixed(4), (t) => t.rpi, "higher better"],
+    ["Revenue per click", "moves with CTR, read as context", "Derived", (t) => "$" + t.rpc.toFixed(2), (t) => t.rpc, "context"],
+  ];
+  const rowsServing = [
+    ["Ad requests", "", "AdMob", (t) => compact(t.requests), (t) => t.requests, "context"],
+    ["Matched requests", "requests a network filled", "AdMob", (t) => compact(t.matched), (t) => t.matched, "higher better"],
+    ["Match rate", "matched ÷ requests", "AdMob", (t) => pct(t.matchRate), (t) => t.matchRate, "higher better"],
+    ["Impressions", "ads actually rendered", "AdMob", (t) => compact(t.impressions), (t) => t.impressions, "higher better"],
+    ["Show rate", "impressions ÷ matched", "AdMob", (t) => pct(t.showRate), (t) => t.showRate, "higher better"],
+    ["Clicks", "ad clicks", "AdMob", (t) => compact(t.clicks), (t) => t.clicks, "context"],
+    ["Impression CTR", "clicks ÷ impressions", "AdMob", (t) => pct(t.ctr), (t) => t.ctr, "context"],
+  ];
+  const rowsUser = [
+    ["Users in arm", "from Remote Config assignment", "Not wired", () => "n/a", null, "context"],
+    ["ARPU", "earnings ÷ users in arm", "Not wired", () => "n/a", null, "higher better"],
+    ["Sessions", "app sessions in the window", "Not wired", () => "n/a", null, "context"],
+    ["D1 retention", "needs the analytics SDK", "Not wired", () => "n/a", null, "higher better"],
+  ];
+  const srcColor = { AdMob: ["#EAF0FF", "#3A5BD0"], Derived: ["#F1F2F6", "#5B6172"], Firebase: ["#FFF1E6", "#B45309"], "Not wired": ["#F6E9E9", "#B23B3B"] };
+  const chg = (v, b, tone) => { const d = pctD(v, b); const up = d >= 0; const good = tone === "context" ? null : up; const col = good == null ? C.faint2 : good ? "#0B7A55" : "#C31C2B"; return <span style={{ color: col, fontFamily: C.mono, fontSize: 12 }}>{d >= 0 ? "▲ +" : "▼ "}{d.toFixed(1)}%</span>; };
+
+  const MetricTable = ({ title, rows }) => (
+    <>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: C.faint, padding: "16px 14px 8px" }}>{title}</div>
+      {rows.map(([name, subd, src, fmt, get, reading], i) => {
+        const bv = bM ? get && fmt(bM.total) : null; const vv = vM ? get && fmt(vM.total) : null;
+        const showChg = get && bM && vM && bM.total[Object.keys(bM.total)[0]] !== undefined;
+        return (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid #F1F2F6", fontSize: 13 }}>
+            <div><div style={{ fontWeight: 600 }}>{name}</div>{subd && <div style={{ fontSize: 11, color: C.faint2 }}>{subd}</div>}</div>
+            <span style={{ justifySelf: "start", fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: (srcColor[src] || srcColor.Derived)[0], color: (srcColor[src] || srcColor.Derived)[1] }}>{src}</span>
+            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{get ? (fmt(bM ? bM.total : {})) : "n/a"}</span>
+            <span style={{ fontFamily: C.mono, textAlign: "right" }}>{get ? (vM ? fmt(vM.total) : "—") : "n/a"}</span>
+            <span style={{ textAlign: "right" }}>{get && bM && vM ? chg(get(vM.total), get(bM.total), reading) : <span style={{ color: C.faint2 }}>n/a</span>}</span>
+            <span style={{ textAlign: "right", fontSize: 11, color: C.faint2 }}>{reading}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+
+  const JsonCard = ({ arm, tone }) => (
+    <div style={{ border: "1px solid " + C.line, borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ padding: "10px 14px", borderBottom: "1px solid " + C.line, display: "flex", alignItems: "center", gap: 8, background: C.panel }}>
+        <b style={{ fontSize: 12.5 }}>{arm ? arm.label : "—"}</b>
+        <span style={{ fontSize: 10.5, color: C.faint2 }}>{tone} arm</span>
+        <div style={{ flex: 1 }} />
+        {arm && (arm.error ? <span style={{ fontSize: 10.5, fontWeight: 700, color: "#C31C2B", background: "#FDECEE", padding: "2px 7px", borderRadius: 6 }}>invalid JSON</span>
+          : <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0B7A55", background: "#E6F6F0", padding: "2px 7px", borderRadius: 6 }}>✓ valid</span>)}
+      </div>
+      {arm && arm.error && <div style={{ fontSize: 11.5, color: "#C31C2B", padding: "8px 14px", background: "#FEF6F6", fontFamily: C.mono }}>{arm.error}</div>}
+      <pre style={{ margin: 0, padding: 14, fontFamily: C.mono, fontSize: 11.5, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 320, overflow: "auto" }}>{arm ? (arm.json ? JSON.stringify(arm.json, null, 2) : arm.raw) : "No config found"}</pre>
+    </div>
+  );
+
+  const UnitRows = ({ m, label }) => m && m.units.length > 0 && (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, marginBottom: 4 }}>{label} · per ad unit</div>
+      <div style={{ border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
+        {m.units.map((u, i) => (
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: i ? "1px solid #F1F2F6" : "none", fontSize: 12, fontFamily: C.mono }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.adUnit.split("/").pop()}</span>
+            <span style={{ textAlign: "right", color: u.found ? C.ink : "#C0651C" }}>{u.found ? money(u.revenue) : "no data"}</span>
+            <span style={{ textAlign: "right" }}>{u.found ? compact(u.impressions) : "—"}</span>
+            <span style={{ textAlign: "right" }}>{u.found ? "$" + u.ecpm.toFixed(2) : "—"}</span>
+          </div>
+        ))}
+        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: "2px solid " + C.line, fontSize: 12, fontFamily: C.mono, fontWeight: 700, background: C.panel }}>
+          <span>Arm subtotal</span><span style={{ textAlign: "right" }}>{money(m.total.revenue)}</span><span style={{ textAlign: "right" }}>{compact(m.total.impressions)}</span><span style={{ textAlign: "right" }}>${m.total.ecpm.toFixed(2)}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 30 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 640, maxHeight: "90%", overflow: "auto", background: "#fff", borderRadius: 14, padding: 24, fontFamily: C.sans }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><Pill fg={g.fg} bg={g.bg}>{x.status}</Pill><span style={{ fontSize: 12, color: C.faint2 }}>{appName(x.app)} · {shortDate(x.start)} → {shortDate(x.end)}</span><div style={{ flex: 1 }} /><button onClick={() => setTestId(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 20, color: C.faint }}>×</button></div>
-        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>{x.name}</div>
-        <div style={{ fontSize: 13, color: C.sub, marginBottom: 16, lineHeight: 1.5 }}>{x.hypothesis}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 16 }}>
-          {[{ label: "Primary lift", v: (r.lift >= 0 ? "+" : "") + r.lift.toFixed(1) + "%", sub: "eCPM, variant vs control", fg: r.lift >= 0 ? "#0B7A55" : "#C31C2B" }, { label: "Confidence", v: r.conf.toFixed(0) + "%", sub: r.conf > 95 ? "significant" : r.conf > 90 ? "approaching significance" : "not yet significant", fg: "#14161C" }, { label: "Progress", v: x.progress + "%", sub: x.status === "blocked" ? "blocked" : x.progress === 100 ? "complete" : "of planned duration", fg: "#14161C" }].map((h) => <div key={h.label} style={{ ...card, padding: 14 }}><div style={{ fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}>{h.label}</div><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600, margin: "4px 0", color: h.fg }}>{h.v}</div><div style={{ fontSize: 11, color: C.faint2 }}>{h.sub}</div></div>)}
+    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 6vw", zIndex: 30, overflow: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "88vw", maxWidth: 1060, background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", fontFamily: C.sans }}>
+        {/* header */}
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid " + C.line, background: "linear-gradient(180deg,#FBFBFE,#fff)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: seed.statusColor || "#5B4BE8" }}>{seed.status}</span>
+            <span style={{ fontSize: 12, color: C.faint2 }}>{seed.list} · {seed.start ? shortDate(seed.start) : "—"} → {seed.due ? shortDate(seed.due) : "—"}</span>
+            {seed.url && <a href={seed.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
+            <div style={{ flex: 1 }} />
+            <button onClick={() => setTestId(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 22, color: C.faint }}>×</button>
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.faint, letterSpacing: ".04em", textTransform: "uppercase" }}>Overall lift · Estimated earnings</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, margin: "4px 0 2px" }}>
+            <div style={{ fontFamily: C.mono, fontSize: 40, fontWeight: 700, color: !anyData ? C.faint2 : lift >= 0 ? "#0B7A55" : "#C31C2B" }}>{!anyData ? "—" : (lift >= 0 ? "+" : "") + lift.toFixed(1) + "%"}</div>
+            {anyData && <div style={{ fontFamily: C.mono, fontSize: 16, color: lift >= 0 ? "#0B7A55" : "#C31C2B" }}>{absD >= 0 ? "+" : ""}{money(absD)}</div>}
+          </div>
+          <div style={{ fontSize: 13, color: C.sub }}>{!variant ? "Add a variant config to compare against the baseline." : !anyData ? "AdMob returned no data for these ad units in the window." : "Test config (" + variant.label + ") is " + (lift >= 0 ? "outperforming" : "underperforming") + " the baseline on revenue."}</div>
+          <div style={{ marginTop: 14 }}><button onClick={() => { setTestId(null); openCreate && openCreate({ name: "Follow-up: " + seed.name, list: "Tests & Experiments", assignee: seed.assignee, priority: "high" }); }} style={{ height: 34, padding: "0 16px", borderRadius: 9, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Create follow-up task</button></div>
         </div>
-        <div style={{ ...card, overflow: "hidden", marginBottom: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 80px", padding: "9px 14px", background: C.panel, borderBottom: "1px solid " + C.line, fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}><span>Metric</span><span style={{ textAlign: "right" }}>Control</span><span style={{ textAlign: "right" }}>Variant</span><span style={{ textAlign: "right" }}>Δ</span></div>
-          {r.rows.map((row) => { const d = delta(row.vari, row.ctrl); return <div key={row.metric} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 80px", padding: "10px 14px", borderBottom: "1px solid #F1F2F6", fontSize: 12.5 }}><span>{row.metric}</span><span style={{ textAlign: "right", fontFamily: C.mono }}>{fmt(row.ctrl, row.unit)}</span><span style={{ textAlign: "right", fontFamily: C.mono }}>{fmt(row.vari, row.unit)}</span><span style={{ textAlign: "right", fontFamily: C.mono, color: d.fg }}>{d.txt}</span></div>; })}
+
+        <div style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <b style={{ fontSize: 14 }}>Config under test</b>
+            <span style={{ fontSize: 11.5, color: C.faint2 }}>parsed from the ticket description · {arms.length} arm{arms.length === 1 ? "" : "s"}</span>
+            <div style={{ flex: 1 }} />
+            {variants.length > 1 && <select value={vi} onChange={(e) => setVi(Number(e.target.value))} style={{ height: 30, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5 }}>{variants.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>}
+          </div>
+          {arms.length === 0 ? <Empty>No JSON config found in the description.</Empty> : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+              <JsonCard arm={baseline} tone="baseline" />
+              <JsonCard arm={variant} tone="variant" />
+            </div>
+          )}
+
+          <div style={{ marginTop: 20 }}>
+            <b style={{ fontSize: 14 }}>All metrics</b>
+            <span style={{ fontSize: 11.5, color: C.faint2, marginLeft: 8 }}>AdMob per ad unit → arm subtotal; user-level needs analytics SDK</span>
+            {loading ? <div style={{ padding: 20, color: C.faint2, fontSize: 13 }}>Loading AdMob data…</div> : (
+              <div style={{ marginTop: 10, border: "1px solid " + C.line, borderRadius: 12, overflow: "hidden" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, padding: "9px 14px", background: C.panel, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: C.faint, letterSpacing: ".03em" }}>
+                  <span>Metric</span><span>Source</span><span style={{ textAlign: "right" }}>Baseline</span><span style={{ textAlign: "right" }}>{variant ? variant.label : "Variant"}</span><span style={{ textAlign: "right" }}>Change</span><span style={{ textAlign: "right" }}>Reading</span>
+                </div>
+                <MetricTable title="Revenue & efficiency" rows={rowsRevenue} />
+                <MetricTable title="Ad serving" rows={rowsServing} />
+                <MetricTable title="User level" rows={rowsUser} />
+              </div>
+            )}
+            {err && <div style={{ marginTop: 10, fontSize: 12, color: "#C0651C" }}>⚠ {err}</div>}
+            {!loading && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}><UnitRows m={bM} label={baseline && baseline.label} /><UnitRows m={vM} label={variant && variant.label} /></div>}
+          </div>
         </div>
-        <div style={{ background: rec.bg, border: "1px solid " + rec.bd, color: rec.fg, borderRadius: 10, padding: "12px 16px", marginBottom: 16 }}><b>{rec.title}</b> <span style={{ fontSize: 13 }}>{rec.body}</span></div>
-        <div style={{ display: "flex", justifyContent: "flex-end" }}><button onClick={() => { setTestId(null); openCreate({ name: "Follow-up: " + x.name, app: x.app, list: "Tests & Experiments", assignee: x.owner, priority: "high", ctxTitle: "Experiment " + x.id, ctxValue: (r.lift >= 0 ? "+" : "") + r.lift.toFixed(1) + "% lift", ctxBad: r.lift < 0 }); }} style={{ height: 36, padding: "0 16px", borderRadius: 9, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Create follow-up task</button></div>
       </div>
     </div>
   );

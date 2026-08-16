@@ -1,6 +1,6 @@
 // @ts-nocheck
 import * as demo from "./data";
-import { generateMediationReport } from "./admob";
+import { generateMediationReport, adUnitReport } from "./admob";
 import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -40,5 +40,5 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
   };
   let TASKS = demo.TASKS; let LISTS_META = null;
   try { const { listsMeta, tasks } = await getFolderData(folderId); if (tasks.length) { TASKS = tasks; LISTS_META = listsMeta; } } catch (e) {}
-  return { TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus };
+  return { TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
 }
