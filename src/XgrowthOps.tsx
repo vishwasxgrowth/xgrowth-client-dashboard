@@ -74,8 +74,20 @@ const Pill = ({ fg, bg, children }) => <span style={{ fontFamily: C.mono, fontSi
 const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 12 };
 const Empty = ({ children }) => <div style={{ ...card, padding: 40, textAlign: "center", color: C.faint }}>{children}</div>;
 
+function NavIcon({ id, color, size = 18 }) {
+  const p = { fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" };
+  const wrap = (ch) => <svg width={size} height={size} viewBox="0 0 24 24">{ch}</svg>;
+  if (id === "dashboard") return wrap(<><rect x="3" y="12" width="4" height="8" {...p} /><rect x="10" y="6" width="4" height="14" {...p} /><rect x="17" y="9" width="4" height="11" {...p} /></>);
+  if (id === "apps") return wrap(<><rect x="3" y="3" width="7" height="7" rx="1.6" {...p} /><rect x="14" y="3" width="7" height="7" rx="1.6" {...p} /><rect x="3" y="14" width="7" height="7" rx="1.6" {...p} /><rect x="14" y="14" width="7" height="7" rx="1.6" {...p} /></>);
+  if (id === "tests") return wrap(<><path d="M9 3h6M10 3v5.5L5.2 17A2 2 0 0 0 7 20h10a2 2 0 0 0 1.8-3L14 8.5V3" {...p} /><path d="M8 14h8" {...p} /></>);
+  if (id === "tasks") return wrap(<><path d="M4 6h9M4 12h9M4 18h6" {...p} /><path d="M16 5.5l1.8 1.8L21 4" {...p} /></>);
+  if (id === "settings") return wrap(<><circle cx="12" cy="12" r="3" {...p} /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z" {...p} /></>);
+  return null;
+}
+
 export default function XgrowthOps() {
   const [page, setPage] = useState("dashboard");
+  const [collapsed, setCollapsed] = useState(false);
   const [range, setRange] = useState("7");
   const [cs, setCs] = useState("2026-07-12");
   const [ce, setCe] = useState("2026-08-10");
@@ -135,17 +147,24 @@ export default function XgrowthOps() {
 
   return (
     <div style={{ display: "flex", height: "calc(100vh - 40px)", margin: -8, background: C.bg, color: C.ink, fontFamily: C.sans, overflow: "hidden", position: "relative" }}>
-      <div style={{ width: 236, flex: "none", background: C.surface, borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "16px 12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 16px" }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
-          <div style={{ lineHeight: 1.15 }}><div style={{ fontSize: 14, fontWeight: 700 }}>Xgrowth Ops</div><div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: C.faint2 }}>Console</div></div>
+      <div style={{ width: collapsed ? 62 : "fit-content", minWidth: collapsed ? 62 : 168, flex: "none", background: C.surface, borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "14px 10px", transition: "width .15s" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 6px 8px" }}>
+          <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
+          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div style={{ fontSize: 14, fontWeight: 700 }}>Xgrowth Ops</div><div style={{ fontSize: 10, fontWeight: 600, letterSpacing: ".08em", textTransform: "uppercase", color: C.faint2 }}>Console</div></div>}
         </div>
-        {NAV.map((n) => { const on = page === n.id; return (
-          <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "9px 11px", marginBottom: 2, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 650 : 500, textAlign: "left", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
-            <span>{n.label}</span>{n.id === "tasks" && overdueAll.length > 0 && <span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: "#FDECEE", color: "#C31C2B" }}>{overdueAll.length}</span>}
+        <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
+        </button>
+        {NAV.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
+          <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
+            style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 9, border: "none", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 650 : 500, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
+            <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
+            {!collapsed && <span>{n.label}</span>}
+            {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: "#FDECEE", color: "#C31C2B" }}>{overdueAll.length}</span></>}
+            {collapsed && badge && <span style={{ position: "absolute", top: 6, right: 9, width: 7, height: 7, borderRadius: "50%", background: "#E02D3C" }} />}
           </button>); })}
         <div style={{ flex: 1 }} />
-        <div style={{ fontSize: 10.5, color: C.faint2, padding: "8px 10px" }}>ClickUp · JedyApps</div>
+        {!collapsed && <div style={{ fontSize: 10.5, color: C.faint2, padding: "8px 10px", whiteSpace: "nowrap" }}>ClickUp · JedyApps</div>}
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
