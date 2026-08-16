@@ -453,13 +453,16 @@ function TestsTab({ tasks, q, tfilter, setTfilter, openTask }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 14 }}>
         {shown.map((t) => { const p = prog(t); const m = member(t.assignee || ""); const pc = groupId(t.status) === "done" ? "#0E9F6E" : /block/i.test(t.status) ? "#E02D3C" : "#5B4BE8"; return (
-          <div key={t.id} onClick={() => openTask(t.id)} style={{ ...card, padding: 16, cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><b style={{ fontSize: 13.5, lineHeight: 1.3 }}>{t.name}</b><div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: "#fff", background: t.statusColor || "#9AA0AE" }}>{t.status}</span></div>
+          <div key={t.id} onClick={() => openTask(t.id)} style={{ ...card, padding: 0, cursor: "pointer", overflow: "hidden" }}>
+            <div style={{ height: 4, background: t.statusColor || "#9AA0AE" }} />
+            <div style={{ padding: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><b style={{ fontSize: 13.5, lineHeight: 1.3 }}>{t.name}</b><div style={{ flex: 1 }} />{(() => { const n = ((t.desc || "").match(/\{/g) || []).length; return n > 1 ? <span style={{ fontSize: 10, fontWeight: 700, color: C.accentDk, background: C.accentBg, padding: "2px 7px", borderRadius: 20 }}>{n} arms</span> : null; })()}<span style={{ fontFamily: C.mono, fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: "#fff", background: t.statusColor || "#9AA0AE" }}>{t.status}</span></div>
             <div style={{ fontSize: 12, color: C.sub, marginBottom: 12, lineHeight: 1.45, minHeight: 34, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{clean(t.desc) || "—"}</div>
             <div style={{ height: 6, borderRadius: 4, background: "#F1F2F6", overflow: "hidden", marginBottom: 10 }}><div style={{ width: (p * 100) + "%", height: "100%", background: pc }} /></div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: C.faint2 }}>
               <span style={{ width: 20, height: 20, borderRadius: "50%", background: m.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{m.initials}</span>
               <span>{t.assignee || "Unassigned"}</span><div style={{ flex: 1 }} /><span style={{ fontFamily: C.mono }}>{t.start ? shortDate(t.start) : "—"} → {t.due ? shortDate(t.due) : "—"}</span>
+            </div>
             </div>
           </div>
         ); })}
@@ -486,6 +489,64 @@ function TaskList({ rows }) {
     </div>
   );
 }
+function GamifyBar({ tasks }) {
+  const done = (t) => groupId(t.status) === "done";
+  // Team leaderboard: closed tasks per assignee
+  const board = {};
+  tasks.forEach((t) => { if (done(t) && t.assignee) board[t.assignee] = (board[t.assignee] || 0) + 1; });
+  const top = Object.entries(board).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const medal = ["🥇", "🥈", "🥉"];
+  // Experiment win-rate: completed tests (heuristic: name has test/experiment or list) that are done
+  const tests = tasks.filter((t) => /test|experiment/i.test(t.list));
+  const testsDone = tests.filter(done);
+  const winRate = testsDone.length ? Math.round((testsDone.filter((t) => /live|complete|ship|win|done/i.test(t.status)).length / testsDone.length) * 100) : 0;
+  // XP: 10 per closed task + 25 per completed test
+  const xpTotal = tasks.filter(done).length * 10 + testsDone.length * 25;
+  const level = Math.max(1, Math.floor(Math.sqrt(xpTotal / 40)) + 1);
+  const intoLevel = xpTotal - Math.pow(level - 1, 2) * 40;
+  const span = Math.pow(level, 2) * 40 - Math.pow(level - 1, 2) * 40;
+  const lvlPct = Math.min(100, Math.round((intoLevel / (span || 1)) * 100));
+
+  const cardS = { ...card, padding: 14, display: "flex", flexDirection: "column", gap: 8 };
+  const label = { fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".04em", color: C.faint, fontWeight: 700 };
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+      <div style={{ ...cardS, background: "linear-gradient(135deg,#EFEDFF,#FFFFFF)" }}>
+        <div style={label}>Team leaderboard · closed tasks</div>
+        {top.length ? top.map(([name, n], i) => { const m = member(name); return (
+          <div key={name} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 15 }}>{medal[i]}</span>
+            <span style={{ width: 22, height: 22, borderRadius: "50%", background: m.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{m.initials}</span>
+            <span style={{ fontSize: 12.5, fontWeight: 550 }}>{name}</span><div style={{ flex: 1 }} />
+            <span style={{ fontFamily: C.mono, fontSize: 12.5, fontWeight: 700, color: C.accentDk }}>{n}</span>
+          </div>
+        ); }) : <div style={{ fontSize: 12, color: C.faint2 }}>No closed tasks yet.</div>}
+      </div>
+      <div style={{ ...cardS, background: "linear-gradient(135deg,#E6F6F0,#FFFFFF)" }}>
+        <div style={label}>Experiment win-rate</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontFamily: C.mono, fontSize: 30, fontWeight: 700, color: "#0B7A55" }}>{winRate}%</span><span style={{ fontSize: 11.5, color: C.faint2 }}>{testsDone.length} completed</span></div>
+        <div style={{ height: 8, borderRadius: 5, background: "#E3EDE8", overflow: "hidden" }}><div style={{ width: winRate + "%", height: "100%", background: "linear-gradient(90deg,#0E9F6E,#5B4BE8)" }} /></div>
+        <div style={{ fontSize: 11, color: C.faint2 }}>🏆 shipped a positive result</div>
+      </div>
+      <div style={{ ...cardS, background: "linear-gradient(135deg,#FFF3E6,#FFFFFF)" }}>
+        <div style={label}>Team level</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontFamily: C.mono, fontSize: 30, fontWeight: 700, color: "#B45309" }}>Lv {level}</span><span style={{ fontSize: 11.5, color: C.faint2 }}>{xpTotal} XP</span></div>
+        <div style={{ height: 8, borderRadius: 5, background: "#F1E7D8", overflow: "hidden" }}><div style={{ width: lvlPct + "%", height: "100%", background: "linear-gradient(90deg,#F59E0B,#EF4444)" }} /></div>
+        <div style={{ fontSize: 11, color: C.faint2 }}>⚡ +10 / task · +25 / experiment</div>
+      </div>
+    </div>
+  );
+}
+
+function listHealth(items) {
+  const open = items.filter((t) => groupId(t.status) !== "done");
+  const overdue = open.filter((t) => t.due && t.due < D.TODAY).length;
+  const ratio = open.length ? overdue / open.length : 0;
+  if (ratio === 0) return { label: "On track", color: "#0B7A55", bg: "#E6F6F0", icon: "✓" };
+  if (ratio < 0.25) return { label: "Watch", color: "#B45309", bg: "#FEF3C7", icon: "•" };
+  return { label: "Behind", color: "#C31C2B", bg: "#FDECEE", icon: "!" };
+}
+
 function GroupedTaskList({ items, taskView, statuses }) {
   const groups = statuses.map((st) => ({ ...st, list: items.filter((t) => t.status === st.name) })).filter((g) => g.list.length);
   if (!groups.length) return <Empty>No tasks match.</Empty>;
@@ -559,9 +620,12 @@ function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee
         {kpi("open", "Open tasks", openN, C.ink)}
       </div>
 
+      <GamifyBar tasks={tasks} />
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>{[["list", "List"], ["board", "Board"]].map(([id, label]) => <button key={id} onClick={() => setTview(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: tview === id ? 650 : 550, padding: "5px 14px", borderRadius: 7, background: tview === id ? "#fff" : "transparent", color: tview === id ? C.ink : "#6B7180" }}>{label}</button>)}</div>
         <select value={tlist} onChange={(e) => { setTlist(e.target.value); setStatusFilter(null); }} style={sel}>{["All lists", ...listNames].map((l) => <option key={l}>{l}</option>)}</select>
+        {useReal && (() => { const h = listHealth(scope); return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20, color: h.color, background: h.bg }}>{h.icon} {h.label}</span>; })()}
         <select value={tassignee} onChange={(e) => setTassignee(e.target.value)} style={sel}>{["All assignees", ...D.MEMBERS.map((m) => m.name)].map((l) => <option key={l}>{l}</option>)}</select>
         <input value={tq} onChange={(e) => setTq(e.target.value)} placeholder="Filter tasks…" style={{ ...sel, width: 180 }} />
         {quick && <button onClick={() => setQuick(null)} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear filter</button>}
