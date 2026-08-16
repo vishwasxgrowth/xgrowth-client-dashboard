@@ -31,11 +31,11 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 const SAVE_KEY = "xgrowth-ops.workspace.v1";
 const SAVE_VERSION = 1;
 
-const money = (n) => (n >= 100000 ? "$" + (n / 1000).toFixed(0) + "K" : n >= 1000 ? "$" + Math.round(n).toLocaleString("en-US") : "$" + n.toFixed(2));
-const money2 = (n) => "$" + n.toFixed(2);
-const money4 = (n) => "$" + n.toFixed(4);
-const compact = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : String(Math.round(n)));
-const pct = (x) => (x * 100).toFixed(1) + "%";
+const money = (n) => { n = Number(n) || 0; return n >= 100000 ? "$" + (n / 1000).toFixed(0) + "K" : n >= 1000 ? "$" + Math.round(n).toLocaleString("en-US") : "$" + n.toFixed(2); };
+const money2 = (n) => "$" + (Number(n) || 0).toFixed(2);
+const money4 = (n) => "$" + (Number(n) || 0).toFixed(4);
+const compact = (n) => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : String(Math.round(n)); };
+const pct = (x) => ((Number(x) || 0) * 100).toFixed(1) + "%";
 function delta(cur, prev, invert) {
   const v = prev ? ((cur - prev) / prev) * 100 : 0;
   const good = invert ? v < 0 : v > 0;
