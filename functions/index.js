@@ -5,10 +5,10 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 
-const GOOGLE_CLIENT_ID = defineSecret("GOOGLE_CLIENT_ID");
-const GOOGLE_CLIENT_SECRET = defineSecret("GOOGLE_CLIENT_SECRET");
-const CLICKUP_TOKEN = defineSecret("CLICKUP_TOKEN");
-const REFRESH_TOKENS = defineSecret("REFRESH_TOKENS"); // JSON: {"jedyapps":"1//0...", ...}
+const GOOGLE_CLIENT_ID = defineSecret("XG_GOOGLE_CLIENT_ID");
+const GOOGLE_CLIENT_SECRET = defineSecret("XG_GOOGLE_CLIENT_SECRET");
+const CLICKUP_TOKEN = defineSecret("XG_CLICKUP_TOKEN");
+const REFRESH_TOKENS = defineSecret("XG_REFRESH_TOKENS"); // JSON: {"jedyapps":"1//0...", ...}
 
 // Origins allowed to call the API (add the deployed dashboard domain later).
 const ALLOWED = new Set(["http://localhost:3000", "http://localhost:5173"]);
@@ -52,7 +52,7 @@ function restQuery(originalUrl) {
   return s ? "?" + s : "";
 }
 
-exports.api = onRequest(
+exports.xgClientApi = onRequest(
   { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS], region: "us-central1" },
   async (req, res) => {
     applyCors(req, res);
