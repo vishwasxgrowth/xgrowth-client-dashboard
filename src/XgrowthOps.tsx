@@ -219,6 +219,7 @@ function AppMultiSelect({ apps, value, onChange }) {
 
 function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, openApp }) {
   const [tierFilter, setTierFilter] = useState([]);
+  const [flaggedOnly, setFlaggedOnly] = useState(false);
   const tiers = useMemo(() => { const win = D.rangeDates(30, 1); const m = {}; for (const app of D.APPS) m[app.id] = tierOf(D.aggregate(app, win).revenue); return m; }, []);
   const pool = useMemo(() => (selApps.length ? D.APPS.filter((a) => selApps.includes(a.id)) : D.APPS), [selApps]);
 
@@ -240,22 +241,34 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortK
     { k: "clicks", label: "Clicks", fmt: compact }, { k: "arpv", label: "Ads ARPV", fmt: money4 }, { k: "arpdav", label: "Ads ARPDAV", fmt: money4 },
   ];
 
-  const { rows, alerts } = useMemo(() => {
+  // Flagged = yesterday vs day-before drop beyond the app's tier threshold (always freshest movement)
+  const flaggedIds = useMemo(() => {
+    const yest = D.rangeDates(1, 1), prevDay = D.rangeDates(1, 2);
+    const ids = [];
+    for (const app of pool) {
+      const rev30 = D.aggregate(app, D.rangeDates(30, 1)).revenue;
+      if (rev30 < 1500) continue; // held out (~<$50/day)
+      const dr = delta(D.aggregate(app, yest).revenue, D.aggregate(app, prevDay).revenue);
+      if (dr.v < -TIERS[tiers[app.id]].drop) ids.push(app.id);
+    }
+    return ids;
+  }, [pool, tiers]);
+
+  const { rows } = useMemo(() => {
     const enrich = (o) => ({ ...o, arpv: o.impressions ? o.revenue / o.impressions : 0, arpdav: o.dau ? o.revenue / o.dau : 0 });
-    let base = tierFilter.length ? pool.filter((a) => tierFilter.includes(tiers[a.id])) : pool;
+    let base = pool;
+    if (flaggedOnly) base = base.filter((a) => flaggedIds.includes(a.id));
+    else if (tierFilter.length) base = base.filter((a) => tierFilter.includes(tiers[a.id]));
     const agg = base.map((app) => ({ app, a: enrich(D.aggregate(app, R.cur)), b: enrich(D.aggregate(app, R.prev)) }));
     agg.sort((x, y) => (sortKey === "name" ? x.app.name.localeCompare(y.app.name) * -sortDir : ((x.a[sortKey] || 0) - (y.a[sortKey] || 0)) * sortDir));
-    let al = 0;
     const rws = agg.map(({ app, a, b }) => {
       const tk = tiers[app.id], T = TIERS[tk];
-      const rev30 = D.aggregate(app, D.rangeDates(30, 1)).revenue;
-      const dr = delta(a.revenue, b.revenue);
-      if (rev30 >= 1500 && dr.v < -T.drop) al++;
       const cells = metricCols.map((c) => ({ v: c.fmt(a[c.k] || 0), d: delta(a[c.k] || 0, b[c.k] || 0) }));
-      return { id: app.id, name: app.name, tierName: T.name, tierColor: T.color, tierBg: T.bg, initials: appInitials(app.name), color: appColor(app.id), cells };
+      return { id: app.id, name: app.name, tierKey: tk, tierColor: T.color, tierBg: T.bg, initials: appInitials(app.name), color: appColor(app.id), cells };
     });
-    return { rows: rws, alerts: al };
-  }, [R, pool, tierFilter, sortKey, sortDir, tiers]);
+    return { rows: rws };
+  }, [R, pool, tierFilter, flaggedOnly, flaggedIds, sortKey, sortDir, tiers]);
+  const alerts = flaggedIds.length;
 
   const sortCol = (k) => { setSortKey(k); setSortDir((d) => (sortKey === k ? -d : -1)); };
   const APPW = 250, COLW = 132, HEADBG = "#FAFAFC";
@@ -289,12 +302,16 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortK
 
       <RevenueChart dates={R.cur} pool={pool} selectionActive={selApps.length > 0} />
 
-      {alerts > 0 && <div style={{ background: "#FDECEE", border: "1px solid #F8D3D7", color: "#C31C2B", borderRadius: 10, padding: "9px 14px", marginBottom: 14, fontSize: 12.5, fontWeight: 600 }}>{alerts === 1 ? "1 app flagged" : alerts + " apps flagged"} — revenue drop exceeds its tier threshold</div>}
+      {alerts > 0 && <div onClick={() => { setFlaggedOnly((v) => !v); setTierFilter([]); }} style={{ background: flaggedOnly ? "#C31C2B" : "#FDECEE", border: "1px solid " + (flaggedOnly ? "#C31C2B" : "#F8D3D7"), color: flaggedOnly ? "#fff" : "#C31C2B", borderRadius: 10, padding: "9px 14px", marginBottom: 14, fontSize: 12.5, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+        <span>{alerts === 1 ? "1 app flagged" : alerts + " apps flagged"} — revenue down vs the day before, beyond its tier threshold</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 11.5, fontWeight: 700 }}>{flaggedOnly ? "Showing flagged · clear ×" : "View flagged →"}</span>
+      </div>}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, color: C.faint }}>Tiers:</span>
         {["T1", "T2", "T3", "T4"].map((t) => { const on = tierFilter.includes(t); const T = TIERS[t]; return (
-          <button key={t} onClick={() => setTierFilter(on ? tierFilter.filter((x) => x !== t) : [...tierFilter, t])} style={{ border: "1px solid " + (on ? T.color : C.line), background: on ? T.bg : "#fff", color: on ? T.color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20 }}>{T.label} · {T.name}</button>
+          <button key={t} onClick={() => { setFlaggedOnly(false); setTierFilter(on ? tierFilter.filter((x) => x !== t) : [...tierFilter, t]); }} style={{ border: "1px solid " + (on ? T.color : C.line), background: on ? T.bg : "#fff", color: on ? T.color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20 }}>{t}</button>
         ); })}
         {tierFilter.length > 0 && <button onClick={() => setTierFilter([])} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear</button>}
       </div>
@@ -316,7 +333,7 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortK
                       <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: r.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{r.initials}</div>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: APPW - 60 }}>{r.name}</div>
-                        <span style={{ display: "inline-block", marginTop: 3, fontSize: 10, fontWeight: 700, letterSpacing: ".02em", padding: "1px 8px", borderRadius: 20, color: r.tierColor, background: r.tierBg }}>{r.tierName}</span>
+                        <span style={{ display: "inline-block", marginTop: 3, fontSize: 10, fontWeight: 700, letterSpacing: ".02em", padding: "1px 8px", borderRadius: 20, color: r.tierColor, background: r.tierBg }}>{r.tierKey}</span>
                       </div>
                     </div>
                   </td>
