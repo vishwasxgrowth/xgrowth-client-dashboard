@@ -9,8 +9,8 @@ const GOOGLE_CLIENT_ID = defineSecret("XG_GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = defineSecret("XG_GOOGLE_CLIENT_SECRET");
 const CLICKUP_TOKEN = defineSecret("XG_CLICKUP_TOKEN");
 const REFRESH_TOKENS = defineSecret("XG_REFRESH_TOKENS"); // JSON: {"jedyapps":"1//0...", ...}
-const GITHUB_TOKEN = defineSecret("XG_GITHUB_TOKEN"); // reads timeseries from the reports repo
-const REPORTS_REPO = "vishwasxgrowth/xgrowth-reports";
+const TIMESERIES_URLS = defineSecret("XG_TIMESERIES_URLS"); // JSON: {"jedyapps":"https://script.google.com/.../exec"}
+
 
 // Origins allowed to call the API (add the deployed dashboard domain later).
 const ALLOWED = new Set(["http://localhost:3000", "http://localhost:5173"]);
@@ -56,7 +56,7 @@ function restQuery(originalUrl) {
 }
 
 exports.xgClientApi = onRequest(
-  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, GITHUB_TOKEN], region: "us-central1" },
+  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, TIMESERIES_URLS], region: "us-central1" },
   async (req, res) => {
     applyCors(req, res);
     if (req.method === "OPTIONS") { res.status(204).end(); return; }
@@ -92,22 +92,20 @@ exports.xgClientApi = onRequest(
       }
 
 
-      // ---- Reports timeseries/day/manifest from the reports GitHub repo ----
-      if (path.startsWith("/timeseries") || path.startsWith("/report-manifest") || path.startsWith("/report-day")) {
+      // ---- Timeseries from the client's Apps Script web app (private sheet) ----
+      if (path.startsWith("/timeseries")) {
         if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
-        let file;
-        if (path.startsWith("/timeseries")) file = "timeseries.json";
-        else if (path.startsWith("/report-manifest")) file = "manifest.json";
-        else { const date = String(req.query.date || ""); if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { res.status(400).json({ error: "bad date" }); return; } file = date + ".html"; }
-        const key = clientId + "/" + file;
         const now = Date.now();
-        if (path.startsWith("/timeseries") && tsCache[key] && tsCache[key].exp > now) { res.set("Content-Type", "application/json").send(tsCache[key].body); return; }
-        const gh = "https://api.github.com/repos/" + REPORTS_REPO + "/contents/clients/" + clientId + "/data/" + file;
-        const r = await fetch(gh, { headers: { Authorization: "Bearer " + GITHUB_TOKEN.value(), Accept: "application/vnd.github.raw", "User-Agent": "xgClientApi" } });
-        if (!r.ok) { res.status(r.status).json({ error: "reports fetch " + r.status }); return; }
+        if (tsCache[clientId] && tsCache[clientId].exp > now) { res.set("Content-Type", "application/json").send(tsCache[clientId].body); return; }
+        let map = {};
+        try { map = JSON.parse(TIMESERIES_URLS.value() || "{}"); } catch (e) {}
+        const url = map[clientId];
+        if (!url) { res.status(404).json({ error: "no timeseries url for client " + clientId }); return; }
+        const r = await fetch(url, { redirect: "follow" });
+        if (!r.ok) { res.status(r.status).json({ error: "timeseries fetch " + r.status }); return; }
         const body = await r.text();
-        if (path.startsWith("/timeseries")) tsCache[key] = { body, exp: now + 30 * 60 * 1000 };
-        res.set("Content-Type", file.endsWith(".html") ? "text/html" : "application/json").send(body);
+        tsCache[clientId] = { body, exp: now + 30 * 60 * 1000 };
+        res.set("Content-Type", "application/json").send(body);
         return;
       }
 
