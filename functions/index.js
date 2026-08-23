@@ -4,12 +4,15 @@
    The browser never sees a Google token. Secrets live in Secret Manager.       */
 const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
+const { Storage } = require("@google-cloud/storage");
 
 const GOOGLE_CLIENT_ID = defineSecret("XG_GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = defineSecret("XG_GOOGLE_CLIENT_SECRET");
 const CLICKUP_TOKEN = defineSecret("XG_CLICKUP_TOKEN");
 const REFRESH_TOKENS = defineSecret("XG_REFRESH_TOKENS"); // JSON: {"jedyapps":"1//0...", ...}
-const TIMESERIES_URLS = defineSecret("XG_TIMESERIES_URLS"); // JSON: {"jedyapps":"https://script.google.com/.../exec"}
+const PUSH_SECRET = defineSecret("XG_PUSH_SECRET"); // shared secret Apps Script uses to push
+const BUCKET = "dolphin-fdffc-xg-timeseries";
+const storage = new Storage();
 
 
 // Origins allowed to call the API (add the deployed dashboard domain later).
@@ -56,7 +59,7 @@ function restQuery(originalUrl) {
 }
 
 exports.xgClientApi = onRequest(
-  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, TIMESERIES_URLS], region: "us-central1" },
+  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, PUSH_SECRET], region: "us-central1", memory: "512MiB", timeoutSeconds: 120 },
   async (req, res) => {
     applyCors(req, res);
     if (req.method === "OPTIONS") { res.status(204).end(); return; }
@@ -93,19 +96,32 @@ exports.xgClientApi = onRequest(
 
 
       // ---- Timeseries from the client's Apps Script web app (private sheet) ----
+      // ---- Timeseries PUSH from Apps Script (domain-safe: script pushes to us) ----
+      if (path === "/timeseries-push") {
+        if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+        if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
+        const key = String(req.query.key || req.get("X-Push-Key") || "");
+        if (!PUSH_SECRET.value() || key !== PUSH_SECRET.value()) { res.status(401).json({ error: "bad key" }); return; }
+        const bodyText = typeof req.body === "string" ? req.body : JSON.stringify(req.body || {});
+        if (!bodyText || bodyText.length < 20) { res.status(400).json({ error: "empty body" }); return; }
+        await storage.bucket(BUCKET).file(clientId + ".json").save(bodyText, { contentType: "application/json", resumable: false });
+        delete tsCache[clientId];
+        res.json({ ok: true, bytes: bodyText.length });
+        return;
+      }
+      // ---- Serve the last pushed timeseries ----
       if (path.startsWith("/timeseries")) {
         if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
         const now = Date.now();
         if (tsCache[clientId] && tsCache[clientId].exp > now) { res.set("Content-Type", "application/json").send(tsCache[clientId].body); return; }
-        let map = {};
-        try { map = JSON.parse(TIMESERIES_URLS.value() || "{}"); } catch (e) {}
-        const url = map[clientId];
-        if (!url) { res.status(404).json({ error: "no timeseries url for client " + clientId }); return; }
-        const r = await fetch(url, { redirect: "follow" });
-        if (!r.ok) { res.status(r.status).json({ error: "timeseries fetch " + r.status }); return; }
-        const body = await r.text();
-        tsCache[clientId] = { body, exp: now + 30 * 60 * 1000 };
-        res.set("Content-Type", "application/json").send(body);
+        try {
+          const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
+          const body = buf.toString("utf8");
+          tsCache[clientId] = { body, exp: now + 30 * 60 * 1000 };
+          res.set("Content-Type", "application/json").send(body);
+        } catch (e) {
+          res.status(404).json({ error: "no timeseries pushed yet for " + clientId });
+        }
         return;
       }
 

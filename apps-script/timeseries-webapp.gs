@@ -235,3 +235,38 @@ function build_() {
     breakdowns: Object.keys(breakdowns).length?breakdowns:null
   };
 }
+
+/* =================================================================
+ * PUSH MODE (recommended when the org blocks public web apps)
+ * Builds the timeseries and POSTs it to the Cloud Function, which
+ * stores it in GCS and serves it to the dashboard. No public web
+ * app needed — this runs as you, inside the domain.
+ *
+ * SETUP:
+ *   1. Set PUSH_URL + PUSH_KEY below (PUSH_KEY must match the
+ *      XG_PUSH_SECRET secret set on the Cloud Function).
+ *   2. Run pushTimeseries() once (authorize when prompted).
+ *   3. Run installDailyTrigger() once to refresh automatically.
+ * ================================================================= */
+var PUSH_URL = 'https://us-central1-dolphin-fdffc.cloudfunctions.net/xgClientApi/timeseries-push';
+var PUSH_KEY = 'SET_ME_TO_MATCH_XG_PUSH_SECRET';
+
+function pushTimeseries() {
+  var payload = JSON.stringify(build_());
+  var url = PUSH_URL + '?clientId=' + encodeURIComponent(CONFIG.client) + '&key=' + encodeURIComponent(PUSH_KEY);
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'application/json', payload: payload, muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  Logger.log('push status ' + code + ': ' + res.getContentText().slice(0, 200));
+  if (code >= 300) throw new Error('push failed ' + code + ': ' + res.getContentText().slice(0, 200));
+  return code;
+}
+
+function installDailyTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'pushTimeseries') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('pushTimeseries').timeBased().everyDays(1).atHour(6).create();
+  Logger.log('Daily trigger installed (pushTimeseries ~6am).');
+}
