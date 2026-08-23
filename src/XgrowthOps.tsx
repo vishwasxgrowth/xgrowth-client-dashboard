@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import D from "./activeData";
 import { parseArms, armMetrics } from "./testConfig";
+import ReportsDashboard from "./reports/ReportsDashboard";
 const CLIENT_NAME = (import.meta.env.VITE_CLIENT_NAME || "Client");
 
 const C = {
@@ -178,7 +179,8 @@ export default function XgrowthOps() {
         </div>
 
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
-          {page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
+          {false && page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
+          {page === "dashboard" && <ReportsDashboard />}
           {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
           {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}

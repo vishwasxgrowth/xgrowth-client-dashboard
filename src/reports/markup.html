@@ -1,0 +1,97 @@
+<header class="shell-header">
+  <div class="shell-title" id="shell-title">JedyApps &middot; Monetization</div>
+  <nav class="shell-tabs" role="tablist">
+    <button class="tab is-active" id="tab-trends" role="tab" aria-selected="true">Trends</button>
+    <button class="tab" id="tab-daily" role="tab" aria-selected="false">Daily report</button>
+  </nav>
+  <div class="shell-datepicker" id="daily-controls" hidden>
+    <label for="report-date">Date</label>
+    <input type="date" id="report-date">
+  </div>
+</header>
+
+<section id="view-trends" class="view">
+  <div class="controls">
+    <div class="control-group" role="group" aria-label="Time range">
+      <button class="seg" data-range="30">30d</button>
+      <button class="seg is-active" data-range="90">90d</button>
+      <button class="seg" data-range="365">12m</button>
+      <button class="seg" data-range="0">All</button>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="metric-select">Metric</label>
+      <select id="metric-select"></select>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="app-select">App</label>
+      <select id="app-select"></select>
+    </div>
+    <div class="control-group">
+      <label class="control-label" for="compare-select">Compare</label>
+      <select id="compare-select">
+        <option value="none">No comparison</option>
+        <option value="prior">Previous period</option>
+        <option value="yoy">Same period last year</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="hero" id="hero"></div>
+
+  <div class="periods-wrap">
+    <div class="periods" id="periods"></div>
+    <div class="periods-note" id="periods-note"></div>
+  </div>
+
+  <figure class="chart-card">
+    <figcaption class="chart-head">
+      <span id="chart-title">Portfolio revenue</span>
+      <span class="chart-legend" id="chart-legend"></span>
+    </figcaption>
+    <div class="chart-holder" id="chart-holder">
+      <svg id="chart" role="img" aria-label="Selected metric over the selected time range"></svg>
+      <div class="tooltip" id="tooltip" hidden></div>
+    </div>
+  </figure>
+
+  <div class="table-card">
+    <div class="table-head">
+      <h2>Apps</h2>
+      <span class="table-note" id="table-note"></span>
+    </div>
+    <div class="table-scroll">
+      <table id="app-table">
+        <thead>
+          <tr>
+            <th class="col-app">App</th>
+            <th class="num">Revenue in range</th>
+            <th class="num">vs prior period</th>
+            <th class="col-spark">Trend</th>
+          </tr>
+        </thead>
+        <tbody id="app-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="table-card" id="breakdown-card" hidden>
+    <div class="table-head">
+      <div class="bd-tabs" id="bd-tabs" role="tablist"></div>
+      <span class="table-note" id="bd-note"></span>
+    </div>
+    <div class="table-scroll" id="bd-body"></div>
+  </div>
+
+  <p class="footnote">
+    Rates such as eCPM are derived from summed components across the range, never averaged across days.
+    Estimated earnings settle for about three days, so the most recent figures can still move slightly.
+  </p>
+</section>
+
+<section id="view-daily" class="view" hidden>
+  <div id="report-status" class="shell-status"></div>
+  <!-- The rendered digest carries its own :root and body styles, meant for a
+       standalone page. It runs in a frame so those cannot leak into the shell. -->
+  <iframe id="report-frame" class="report-frame" title="Daily monetization digest"></iframe>
+</section>
+
