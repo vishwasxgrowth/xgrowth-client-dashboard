@@ -109,6 +109,25 @@ exports.xgClientApi = onRequest(
         res.json({ ok: true, bytes: bodyText.length });
         return;
       }
+      // ---- Raw CSV push (AppDaily / Users) for the daily-report engine ----
+      if (path === "/csv-push") {
+        if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+        if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
+        const key = String(req.query.key || req.get("X-Push-Key") || "");
+        if (!PUSH_SECRET.value() || key !== PUSH_SECRET.value()) { res.status(401).json({ error: "bad key" }); return; }
+        const name = String(req.query.name || "").replace(/[^A-Za-z0-9_-]/g, ""); // AppDaily | Users
+        if (!name) { res.status(400).json({ error: "name required" }); return; }
+        const bodyText = typeof req.body === "string" ? req.body : String(req.body || "");
+        if (!bodyText || bodyText.length < 10) { res.status(400).json({ error: "empty body" }); return; }
+        await storage.bucket(BUCKET).file(clientId + "/" + name + ".csv").save(bodyText, { contentType: "text/csv", resumable: false });
+        // A fresh feed invalidates any cached rendered pages for this client.
+        try {
+          const [files] = await storage.bucket(BUCKET).getFiles({ prefix: clientId + "/reports/" });
+          await Promise.all(files.map((f) => f.delete().catch(() => {})));
+        } catch (e) {}
+        res.json({ ok: true, name, bytes: bodyText.length });
+        return;
+      }
       // ---- Serve the last pushed timeseries ----
       if (path.startsWith("/timeseries")) {
         if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
@@ -125,9 +144,106 @@ exports.xgClientApi = onRequest(
         return;
       }
 
+      // ---- Daily report: list of available dates (manifest) ----
+      // The manifest is just the timeseries' own date axis — no separate file to
+      // maintain. Newest first, so the UI's date picker defaults to the latest.
+      if (path === "/report-manifest") {
+        if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
+        try {
+          const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
+          const ts = JSON.parse(buf.toString("utf8"));
+          const dates = Array.isArray(ts.dates) ? ts.dates.slice().sort().reverse() : [];
+          res.set("Content-Type", "application/json").json({ client: clientId, dates });
+        } catch (e) {
+          res.status(404).json({ error: "no data pushed yet for " + clientId });
+        }
+        return;
+      }
+
+      // ---- Daily report: render one day's digest HTML on demand ----
+      // Runs the canonical engines (vendored under functions/engine) on the
+      // AppDaily.csv the Apps Script pushes alongside the timeseries. Rendered
+      // pages are cached in the bucket under reports/<date>.html so a repeat
+      // view is a bucket read, not a re-render.
+      if (path === "/report-day") {
+        if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
+        const date = String(req.query.date || "").replace(/-/g, ""); // accept YYYY-MM-DD or YYYYMMDD
+        if (!/^\d{8}$/.test(date)) { res.status(400).json({ error: "date=YYYY-MM-DD required" }); return; }
+
+        const cacheKey = clientId + "/reports/" + date + ".html";
+        // 1) Serve a previously rendered page if present.
+        try {
+          const [cached] = await storage.bucket(BUCKET).file(cacheKey).download();
+          res.set("Content-Type", "text/html; charset=utf-8").send(cached.toString("utf8"));
+          return;
+        } catch (e) { /* not cached yet — render below */ }
+
+        // 2) Need the raw AppDaily rows the Apps Script pushed.
+        let appDailyCsv;
+        try {
+          const [buf] = await storage.bucket(BUCKET).file(clientId + "/AppDaily.csv").download();
+          appDailyCsv = buf.toString("utf8");
+        } catch (e) {
+          res.status(404).json({ error: "no AppDaily.csv pushed for " + clientId + " — run pushTimeseries once after updating the Apps Script" });
+          return;
+        }
+        // Users.csv is optional (adds ARPDAU/ARPDAV); ignore if absent.
+        let usersCsv = null;
+        try { const [u] = await storage.bucket(BUCKET).file(clientId + "/Users.csv").download(); usersCsv = u.toString("utf8"); } catch (e) {}
+
+        try {
+          const html = await renderDailyReport(clientId, date, appDailyCsv, usersCsv);
+          // Cache for next time (best-effort; a failure here must not fail the response).
+          try { await storage.bucket(BUCKET).file(cacheKey).save(html, { contentType: "text/html", resumable: false }); } catch (e) {}
+          res.set("Content-Type", "text/html; charset=utf-8").send(html);
+        } catch (e) {
+          res.status(500).json({ error: "render failed: " + String((e && e.message) || e) });
+        }
+        return;
+      }
+
       res.status(404).json({ error: "not found" });
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }
   }
 );
+
+// ---- Run the vendored canonical engines to produce one day's digest HTML ----
+// digest.mjs and render-html.mjs are CLI scripts (byte copies from xgrowth-reports),
+// so we drive them exactly as their CLI expects: write inputs to /tmp (the only
+// writable dir in Cloud Functions), spawn each with node, read back the page.
+const path = require("node:path");
+const os = require("node:os");
+const fs = require("node:fs/promises");
+const { execFile } = require("node:child_process");
+
+function run_(cmd, args) {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { timeout: 90000, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) { err.message += "\n" + String(stderr || ""); reject(err); return; }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function renderDailyReport(clientId, date, appDailyCsv, usersCsv) {
+  const ENGINE = path.join(__dirname, "engine");
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), "rpt-"));
+  try {
+    const appDailyPath = path.join(work, "AppDaily.csv");
+    await fs.writeFile(appDailyPath, appDailyCsv, "utf8");
+    const args = ["--appdaily", appDailyPath, "--client", clientId, "--date", date, "--out", work];
+    if (usersCsv) { const up = path.join(work, "Users.csv"); await fs.writeFile(up, usersCsv, "utf8"); args.push("--users", up); }
+
+    // 1) digest.mjs -> writes digest.json into work
+    await run_(process.execPath, [path.join(ENGINE, "digest.mjs"), ...args]);
+    // 2) render-html.mjs -> the full L0–L4 page the dashboard iframes
+    const pagePath = path.join(work, "page.html");
+    await run_(process.execPath, [path.join(ENGINE, "render-html.mjs"),
+      "--json", path.join(work, "digest.json"), "--out", pagePath]);
+    return await fs.readFile(pagePath, "utf8");
+  } finally {
+    fs.rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}

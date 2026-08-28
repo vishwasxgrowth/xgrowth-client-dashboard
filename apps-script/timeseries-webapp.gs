@@ -269,7 +269,38 @@ function pushTimeseries() {
   var code = res.getResponseCode();
   Logger.log('push status ' + code + ': ' + res.getContentText().slice(0, 200));
   if (code >= 300) throw new Error('push failed ' + code + ': ' + res.getContentText().slice(0, 200));
+
+  // Also push the raw AppDaily (and Users, if present) CSV so the Daily-report
+  // route can run the canonical digest engine on real rows for any date.
+  pushTabCsv_('AppDaily', CONFIG.tabs.appDaily);
+  pushTabCsv_('Users', CONFIG.tabs.users);
   return code;
+}
+
+// Upload one tab as <clientId>/<label>.csv to the same push endpoint. Best-effort:
+// a failure here is logged but does not fail the timeseries push above.
+function pushTabCsv_(label, tabName) {
+  try {
+    var tab = readTab_(tabName, false);
+    if (!tab || !tab.rows.length) { Logger.log('skip ' + label + '.csv (no rows)'); return; }
+    var lines = [tab.header.join(',')];
+    tab.rows.forEach(function (r) {
+      lines.push(r.map(function (v) {
+        var s = (v === null || v === undefined) ? '' : String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(','));
+    });
+    var url = PUSH_URL.replace('/timeseries-push', '/csv-push') +
+      '?clientId=' + encodeURIComponent(CONFIG.client) +
+      '&name=' + encodeURIComponent(label) +
+      '&key=' + encodeURIComponent(pushKey_());
+    var res = UrlFetchApp.fetch(url, {
+      method: 'post', contentType: 'text/csv', payload: lines.join('\n'), muteHttpExceptions: true
+    });
+    Logger.log('push ' + label + '.csv status ' + res.getResponseCode());
+  } catch (err) {
+    Logger.log('push ' + label + '.csv failed: ' + err);
+  }
 }
 
 function installDailyTrigger() {
