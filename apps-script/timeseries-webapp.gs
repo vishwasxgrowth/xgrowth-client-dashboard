@@ -243,17 +243,26 @@ function build_() {
  * app needed — this runs as you, inside the domain.
  *
  * SETUP:
- *   1. Set PUSH_URL + PUSH_KEY below (PUSH_KEY must match the
- *      XG_PUSH_SECRET secret set on the Cloud Function).
+ *   1. Set PUSH_URL below. Put the push key in Script Properties as
+ *      XG_PUSH_KEY (must match the XG_PUSH_SECRET secret on the Cloud
+ *      Function). Never commit the real key to the repo.
  *   2. Run pushTimeseries() once (authorize when prompted).
- *   3. Run installDailyTrigger() once to refresh automatically.
+ *   3. Run installDailyTrigger() once to refresh automatically (~09:00,
+ *      after the AdMob feed and GA4 pull have written the day).
  * ================================================================= */
 var PUSH_URL = 'https://us-central1-dolphin-fdffc.cloudfunctions.net/xgClientApi/timeseries-push';
+// The push key must equal the XG_PUSH_SECRET set on the Cloud Function. Do NOT
+// hardcode the real value in the repo. Store it per-sheet in Script Properties
+// (Project Settings > Script Properties) under key XG_PUSH_KEY; the constant
+// below is only a fallback/placeholder for quick local testing.
 var PUSH_KEY = 'SET_ME_TO_MATCH_XG_PUSH_SECRET';
+function pushKey_() {
+  return PropertiesService.getScriptProperties().getProperty('XG_PUSH_KEY') || PUSH_KEY;
+}
 
 function pushTimeseries() {
   var payload = JSON.stringify(build_());
-  var url = PUSH_URL + '?clientId=' + encodeURIComponent(CONFIG.client) + '&key=' + encodeURIComponent(PUSH_KEY);
+  var url = PUSH_URL + '?clientId=' + encodeURIComponent(CONFIG.client) + '&key=' + encodeURIComponent(pushKey_());
   var res = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', payload: payload, muteHttpExceptions: true
   });
@@ -267,6 +276,19 @@ function installDailyTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'pushTimeseries') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('pushTimeseries').timeBased().everyDays(1).atHour(6).create();
-  Logger.log('Daily trigger installed (pushTimeseries ~6am).');
+  // 09:00 local — after the AdMob feed (07:00) and the GA4 users pull (08:00),
+  // so the push always builds from a fully-written day.
+  ScriptApp.newTrigger('pushTimeseries').timeBased().everyDays(1).atHour(9)
+    .inTimezone(Session.getScriptTimeZone()).create();
+  Logger.log('Daily trigger installed (pushTimeseries ~09:00 ' + Session.getScriptTimeZone() + ').');
+}
+
+// Undo installDailyTrigger — use on a sheet that should stop pushing (e.g. an
+// old snapshot sheet after repointing the dashboard to the real feed sheet).
+function removePushTrigger() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'pushTimeseries') { ScriptApp.deleteTrigger(t); n++; }
+  });
+  Logger.log('Removed ' + n + ' pushTimeseries trigger(s).');
 }
