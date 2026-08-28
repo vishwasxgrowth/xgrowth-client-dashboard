@@ -770,13 +770,16 @@ function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, taskAppMap }) {
   if (scopeApp && !tasks.length) return <Empty>No tasks matched to this app.</Empty>;
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
-        {kpi("overdue", "Overdue", od, od ? "#C31C2B" : C.ink)}
-        {kpi("today", "Due today", dtoday, C.ink)}
-        {kpi("open", "Open tasks", openN, C.ink)}
-      </div>
-
-      <GamifyBar tasks={tasks} />
+      {!scopeApp && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 14 }}>
+            {kpi("overdue", "Overdue", od, od ? "#C31C2B" : C.ink)}
+            {kpi("today", "Due today", dtoday, C.ink)}
+            {kpi("open", "Open tasks", openN, C.ink)}
+          </div>
+          <GamifyBar tasks={tasks} />
+        </>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>{[["list", "List"], ["board", "Board"]].map(([id, label]) => <button key={id} onClick={() => setTview(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: tview === id ? 650 : 550, padding: "5px 14px", borderRadius: 7, background: tview === id ? "#fff" : "transparent", color: tview === id ? C.ink : "#6B7180" }}>{label}</button>)}</div>
