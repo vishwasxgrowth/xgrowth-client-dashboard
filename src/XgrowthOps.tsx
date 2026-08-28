@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Eval-free React port of the Xgrowth Ops dashboard (from the .dc.html).
 // All five tabs, ported faithfully. No runtime eval / new Function.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import D from "./activeData";
 import { parseArms, armMetrics } from "./testConfig";
@@ -181,7 +181,7 @@ export default function XgrowthOps() {
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           {false && page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
           {page === "dashboard" && <ReportsDashboard />}
-          {page === "apps" && <AppsTab {...{ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest: setTestId }} />}
+          {page === "apps" && <AppsTab {...{ R, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView }} />}
           {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
@@ -372,30 +372,95 @@ function DashboardTab({ R, range, setRange, cs, setCs, ce, setCe, selApps, sortK
   );
 }
 
-function AppsTab({ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView, openTest }) {
+const APPS_LIST_COLS = [
+  { k: "dau", label: "DAU", fmt: compact },
+  { k: "revenue", label: "Revenue", fmt: money },
+  { k: "ecpm", label: "eCPM", fmt: money2 },
+  { k: "matchRate", label: "Match rate", fmt: pct },
+  { k: "showRate", label: "Show rate", fmt: pct },
+  { k: "arpdav", label: "ARPDAV", fmt: money4 },
+  { k: "arpdau", label: "ARPDAU", fmt: money4 },
+];
+
+function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView }) {
+  const [expandedId, setExpandedId] = useState(null);
   if (!appId) {
     const qq = q.trim().toLowerCase();
-    const cards = D.APPS.filter((app) => (!selApps || !selApps.length || selApps.includes(app.id)) && (!qq || app.name.toLowerCase().includes(qq))).map((app) => { const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev), d = delta(a.revenue, b.revenue); return { app, rev: money(a.revenue), d, ecpm: money2(a.ecpm), arpdau: money4(a.arpdau), open: tasks.filter((t) => t.app === app.id && groupId(t.status) !== "done").length }; });
+    const rows = D.APPS.filter((app) => (!selApps || !selApps.length || selApps.includes(app.id)) && (!qq || app.name.toLowerCase().includes(qq)))
+      .map((app) => {
+        const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev);
+        const cells = APPS_LIST_COLS.map((c) => ({ v: c.fmt(a[c.k] || 0), d: delta(a[c.k] || 0, b[c.k] || 0) }));
+        const open = tasks.filter((t) => t.app === app.id && groupId(t.status) !== "done").length;
+        return { app, a, cells, open };
+      })
+      .sort((x, y) => y.a.revenue - x.a.revenue);
+    const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", padding: "10px 14px", background: "#FAFAFC", borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", textAlign: "right" };
+    const cbase = { padding: "10px 14px", borderBottom: "1px solid #F1F2F6", whiteSpace: "nowrap", textAlign: "right" };
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14 }}>
-        {cards.map(({ app, rev, d, ecpm, arpdau, open }) => (
-          <div key={app.id} onClick={() => { setAppId(app.id); setAppTab("dashboard"); setHov(-1); }} style={{ ...card, padding: 16, cursor: "pointer" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 10, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{appInitials(app.name)}</div>
-              <div style={{ minWidth: 0 }}><div style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{app.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{app.cat} · {app.tier} · {app.store}</div></div>
-            </div>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><div style={{ fontFamily: C.mono, fontSize: 22, fontWeight: 600 }}>{rev}</div><Pill fg={d.fg} bg={d.bg}>{d.arrow} {d.txt.replace("+", "")}</Pill></div>
-            <div style={{ display: "flex", gap: 16, marginTop: 10, fontSize: 12, color: C.sub }}><span>eCPM <b style={{ fontFamily: C.mono }}>{ecpm}</b></span><span>ARPDAU <b style={{ fontFamily: C.mono }}>{arpdau}</b></span><span>{open} open</span></div>
+      <>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+          <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>
+            {[["y", "Yesterday"], ["7", "Last 7 days"], ["30", "Last 30 days"]].map(([id, label]) => (
+              <button key={id} onClick={() => setRange(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: range === id ? 650 : 550, padding: "5px 12px", borderRadius: 7, background: range === id ? "#fff" : "transparent", color: range === id ? C.ink : "#6B7180", boxShadow: range === id ? "0 1px 2px rgba(16,24,40,.1)" : "none" }}>{label}</button>
+            ))}
           </div>
-        ))}
-      </div>
+          <span style={{ fontSize: 12, color: C.faint }}>{R.sub}</span>
+        </div>
+        <div style={{ ...card, overflow: "hidden" }}>
+          <div style={{ overflow: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ ...hbase, textAlign: "left" }}>App</th>
+                  {APPS_LIST_COLS.map((c) => <th key={c.k} style={hbase}>{c.label}</th>)}
+                  <th style={hbase}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ app, a, cells, open }) => {
+                  const isOpen = expandedId === app.id;
+                  return (
+                    <Fragment key={app.id}>
+                      <tr onClick={() => { setAppId(app.id); setAppTab("dashboard"); setHov(-1); }} style={{ cursor: "pointer" }}>
+                        <td style={{ ...cbase, textAlign: "left" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                            <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{appInitials(app.name)}</div>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{app.name}</div>
+                              <div style={{ fontSize: 11, color: C.faint2 }}>{app.tier} · {open} open</div>
+                            </div>
+                          </div>
+                        </td>
+                        {cells.map((c, i) => <td key={i} style={cbase}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></td>)}
+                        <td style={cbase}>
+                          <button onClick={(e) => { e.stopPropagation(); setExpandedId(isOpen ? null : app.id); }} title={isOpen ? "Hide charts" : "Show charts"}
+                            style={{ border: "1px solid " + C.line, background: isOpen ? C.accentBg : "#fff", color: isOpen ? C.accentDk : C.sub, cursor: "pointer", borderRadius: 7, width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .12s" }}><path d="M6 9l6 6 6-6" /></svg>
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={APPS_LIST_COLS.length + 2} style={{ padding: 0, borderBottom: "1px solid #F1F2F6" }}>
+                            <AppExpandedCharts app={app} dates={R.cur} agg={a} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {rows.length === 0 && <Empty>No apps match.</Empty>}
+      </>
     );
   }
   const app = D.APPS.find((a) => a.id === appId);
   const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev);
   const stats = [{ label: "Revenue", v: money(a.revenue), d: delta(a.revenue, b.revenue) }, { label: "eCPM", v: money2(a.ecpm), d: delta(a.ecpm, b.ecpm) }, { label: "Impressions", v: compact(a.impressions), d: delta(a.impressions, b.impressions) }, { label: "Match rate", v: pct(a.matchRate), d: delta(a.matchRate, b.matchRate) }];
   const appTasks = tasks.filter((t) => t.app === app.id).map(taskView);
-  const appTests = D.EXPERIMENTS.filter((x) => x.app === app.id);
   const cd = D.rangeDates(chartDays, 1); const vals = cd.map((ds) => D.dayRow(app, ds).revenue);
   const mn = Math.min(...vals) * 0.9, mx = Math.max(...vals) * 1.06, sp = mx - mn || 1;
   const X = (i) => 60 + (i / (vals.length - 1)) * 850, Y = (v) => 24 + (1 - (v - mn) / sp) * 200;
@@ -415,7 +480,7 @@ function AppsTab({ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays,
         {stats.map((s) => <div key={s.label} style={{ ...card, padding: "12px 14px" }}><div style={{ fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}>{s.label}</div><div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 600, margin: "4px 0" }}>{s.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: s.d.fg }}>{s.d.arrow} {s.d.txt.replace("+", "")}</div></div>)}
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, borderBottom: "1px solid " + C.line }}>
-        {[["dashboard", "Dashboard"], ["tasks", "Tasks"], ["tests", "Tests"]].map(([id, label]) => <button key={id} onClick={() => setAppTab(id)} style={{ border: "none", background: "none", cursor: "pointer", padding: "8px 2px", marginRight: 14, fontSize: 13.5, fontWeight: appTab === id ? 700 : 500, color: appTab === id ? C.accent : C.ink, borderBottom: appTab === id ? "2px solid " + C.accent : "2px solid transparent" }}>{label}</button>)}
+        {[["dashboard", "Dashboard"], ["tasks", "Tasks"]].map(([id, label]) => <button key={id} onClick={() => setAppTab(id)} style={{ border: "none", background: "none", cursor: "pointer", padding: "8px 2px", marginRight: 14, fontSize: 13.5, fontWeight: appTab === id ? 700 : 500, color: appTab === id ? C.accent : C.ink, borderBottom: appTab === id ? "2px solid " + C.accent : "2px solid transparent" }}>{label}</button>)}
       </div>
       {appTab === "dashboard" && (
         <div style={{ ...card, padding: 16 }}>
@@ -432,7 +497,46 @@ function AppsTab({ R, q, selApps, appId, setAppId, appTab, setAppTab, chartDays,
         </div>
       )}
       {appTab === "tasks" && (appTasks.length ? <TaskList rows={appTasks} /> : <Empty>No tasks for this app.</Empty>)}
-      {appTab === "tests" && (appTests.length ? <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{appTests.map((x) => { const g = group(x.status); return <div key={x.id} onClick={() => openTest(x.id)} style={{ ...card, padding: 14, cursor: "pointer" }}><div style={{ display: "flex", alignItems: "center", gap: 8 }}><b style={{ fontSize: 13.5 }}>{x.name}</b><div style={{ flex: 1 }} /><Pill fg={g.fg} bg={g.bg}>{x.status}</Pill></div><div style={{ fontSize: 12, color: C.sub, marginTop: 5 }}>{x.hypothesis}</div></div>; })}</div> : <Empty>No experiments for this app.</Empty>)}
+    </div>
+  );
+}
+
+// Revenue / eCPM / Impressions / ARPDAV, side by side, for the row's own
+// selected range — the same D.dayRow the list metrics are aggregated from.
+function AppExpandedCharts({ app, dates, agg }) {
+  const days = useMemo(() => dates.map((ds) => D.dayRow(app, ds)), [app, dates]);
+  const blocks = [
+    { label: "Revenue", values: days.map((r) => r.revenue), total: agg.revenue, fmt: money, color: appColor(app.id) },
+    { label: "eCPM", values: days.map((r) => r.ecpm), total: agg.ecpm, fmt: money2, color: "#0E9F6E" },
+    { label: "Impressions", values: days.map((r) => r.impressions), total: agg.impressions, fmt: compact, color: "#D9730D" },
+    { label: "ARPDAV", values: days.map((r) => (r.dav ? r.revenue / r.dav : 0)), total: agg.arpdav, fmt: money4, color: "#7C3AED" },
+  ];
+  return (
+    <div style={{ padding: 16, background: C.panel }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+        {blocks.map((b) => <MiniMetricChart key={b.label} {...b} />)}
+      </div>
+    </div>
+  );
+}
+
+function MiniMetricChart({ label, values, total, fmt, color }) {
+  const w = 240, h = 88, padL = 4, padR = 4, padT = 8, padB = 4;
+  const iw = w - padL - padR, ih = h - padT - padB;
+  const mx = Math.max(1, ...values), mn = Math.min(0, ...values);
+  const sp = (mx - mn) || 1;
+  const X = (i) => padL + (values.length <= 1 ? iw / 2 : (i / (values.length - 1)) * iw);
+  const Y = (v) => padT + (1 - (v - mn) / sp) * ih;
+  const line = values.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
+  const area = values.length > 1 ? line + " L" + X(values.length - 1).toFixed(1) + " " + (padT + ih) + " L" + X(0).toFixed(1) + " " + (padT + ih) + " Z" : "";
+  return (
+    <div style={{ ...card, padding: 12 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: C.faint, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: C.mono, fontSize: 16, fontWeight: 700, marginBottom: 6 }}>{fmt(total)}</div>
+      <svg viewBox={"0 0 " + w + " " + h} style={{ width: "100%", height: h, display: "block" }}>
+        {area && <path d={area} fill={color + "20"} />}
+        {values.length > 1 ? <path d={line} fill="none" stroke={color} strokeWidth="1.8" /> : (values.length === 1 && <circle cx={X(0)} cy={Y(values[0] || 0)} r="3" fill={color} />)}
+      </svg>
     </div>
   );
 }
