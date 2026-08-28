@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import D from "./activeData";
 import { parseArms, armMetrics } from "./testConfig";
 import ReportsDashboard from "./reports/ReportsDashboard";
+import { loadTimeseries, tsAppNames, tsRangeIdx, tsAggregate, tsDayRowAt, buildTaskAppIndex } from "./timeseriesSource";
 const CLIENT_NAME = (import.meta.env.VITE_CLIENT_NAME || "Client");
 
 const C = {
@@ -37,6 +38,9 @@ const money2 = (n) => "$" + (Number(n) || 0).toFixed(2);
 const money4 = (n) => "$" + (Number(n) || 0).toFixed(4);
 const compact = (n) => { n = Number(n) || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(0) + "K" : String(Math.round(n)); };
 const pct = (x) => ((Number(x) || 0) * 100).toFixed(1) + "%";
+// timeseriesSource's matchRate/showRate are already 0-100 (not 0-1), unlike
+// the demo/AdMob data layer's — this formats those without re-multiplying.
+const pct100 = (x) => (Number(x) || 0).toFixed(1) + "%";
 function delta(cur, prev, invert) {
   const v = prev ? ((cur - prev) / prev) * 100 : 0;
   const good = invert ? v < 0 : v > 0;
@@ -112,6 +116,8 @@ export default function XgrowthOps() {
   const [appTab, setAppTab] = useState("dashboard");
   const [chartDays, setChartDays] = useState(30);
   const [hov, setHov] = useState(-1);
+  const [ts, setTs] = useState(null);
+  const [tsError, setTsError] = useState(null);
   const [tfilter, setTfilter] = useState("All");
   const [tview, setTview] = useState("list");
   const [tlist, setTlist] = useState("All lists");
@@ -128,6 +134,14 @@ export default function XgrowthOps() {
     return D.TASKS.map((t) => ({ ...t }));
   });
   useEffect(() => { try { const raw = localStorage.getItem(SAVE_KEY); if (raw) { const s = JSON.parse(raw); if (s && s.threshold != null) setThreshold(s.threshold); if (s && s.at) setSavedAt(s.at); } } catch (e) {} }, []);
+  // The Applications tab (and ClickUp app-matching) reads from the same
+  // timeseries.json the Dashboard/Trends tab uses, fetched once here.
+  useEffect(() => {
+    let live = true;
+    loadTimeseries().then((j) => { if (live) setTs(j); }).catch((e) => { if (live) setTsError(String((e && e.message) || e)); });
+    return () => { live = false; };
+  }, []);
+  const taskAppMap = useMemo(() => (ts ? buildTaskAppIndex(tasks, tsAppNames(ts)) : new Map()), [tasks, ts]);
   const tt = useRef();
   const flash = (text) => { clearTimeout(tt.current); setToast(text); tt.current = setTimeout(() => setToast(null), 2600); };
   const persist = (nextTasks, thr) => { const at = new Date().toISOString(); try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, at, tasks: nextTasks == null ? tasks : nextTasks, threshold: thr == null ? threshold : thr })); setSavedAt(at); } catch (e) {} };
@@ -148,7 +162,12 @@ export default function XgrowthOps() {
     const g = group(t.status), m = member(t.assignee);
     const overdue = t.due && t.due < D.TODAY && groupId(t.status) !== "done";
     const done = groupId(t.status) === "done";
-    return { id: t.id, name: t.name, status: t.status, sfg: g.fg, sbg: g.bg, list: t.list, app: t.app ? appName(t.app) : "—", hasApp: !!t.app,
+    // Real ClickUp tasks carry no app id (no custom field for it — see
+    // timeseriesSource.ts); taskAppMap infers it from the task name instead.
+    // Demo tasks already have a real D.APPS id, so that path still works too.
+    const matchedApp = taskAppMap.get(t.id);
+    const appLabel = matchedApp || (t.app ? appName(t.app) : null);
+    return { id: t.id, name: t.name, status: t.status, sfg: g.fg, sbg: g.bg, list: t.list, app: appLabel || "—", hasApp: !!appLabel,
       priority: t.priority || "—", pfg: PRIO[t.priority] || "#C4C8D2", pbg: PRIO_BG[t.priority] || "#F1F2F6", hasPriority: !!t.priority,
       due: t.due ? shortDate(t.due) : "—", dfg: overdue ? "#C31C2B" : "#8A90A0", ainit: m.initials, acolor: m.color,
       nfg: done ? "#9AA0AE" : "#14161C", strike: done ? "line-through" : "none", check: done ? "✓" : "", checkBd: done ? "#0E9F6E" : "#D3D6DE", checkBg: done ? "#0E9F6E" : "#fff",
@@ -191,7 +210,7 @@ export default function XgrowthOps() {
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           {false && page === "dashboard" && <DashboardTab {...{ R, range, setRange, cs, setCs, ce, setCe, selApps, sortKey, setSortKey, sortDir, setSortDir, threshold, openApp: (id) => { setPage("apps"); setAppId(id); setAppTab("dashboard"); setHov(-1); } }} />}
           {page === "dashboard" && <ReportsDashboard />}
-          {page === "apps" && <AppsTab {...{ R, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView }} />}
+          {page === "apps" && <AppsTab {...{ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }} />}
           {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, tview, setTview, tlist, setTlist, tassignee, setTassignee, tq, setTq, onMove }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved }} />}
@@ -386,22 +405,35 @@ const APPS_LIST_COLS = [
   { k: "dau", label: "DAU", fmt: compact },
   { k: "revenue", label: "Revenue", fmt: money },
   { k: "ecpm", label: "eCPM", fmt: money2 },
-  { k: "matchRate", label: "Match rate", fmt: pct },
-  { k: "showRate", label: "Show rate", fmt: pct },
+  { k: "matchRate", label: "Match rate", fmt: pct100 },
+  { k: "showRate", label: "Show rate", fmt: pct100 },
   { k: "arpdav", label: "ARPDAV", fmt: money4 },
   { k: "arpdau", label: "ARPDAU", fmt: money4 },
 ];
 
-function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, chartDays, setChartDays, hov, setHov, tasks, taskView }) {
-  const [expandedId, setExpandedId] = useState(null);
+// All data here comes from timeseries.json (see timeseriesSource.ts) — the
+// same feed the Dashboard/Trends tab reads, so the two never disagree.
+function AppsTab({ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }) {
+  if (tsError) return <Empty>Applications data unavailable: {tsError}</Empty>;
+  if (!ts) return <Empty>Loading application data…</Empty>;
+
+  const days = range === "y" ? 1 : range === "30" ? 30 : 7;
+  const r = tsRangeIdx(ts, days);
+  const pa = r.a - r.days, pb = r.a - 1;
+  const hasPrev = pa >= 0;
+
   if (!appId) {
     const qq = q.trim().toLowerCase();
-    const rows = D.APPS.filter((app) => (!selApps || !selApps.length || selApps.includes(app.id)) && (!qq || app.name.toLowerCase().includes(qq)))
-      .map((app) => {
-        const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev);
-        const cells = APPS_LIST_COLS.map((c) => ({ v: c.fmt(a[c.k] || 0), d: delta(a[c.k] || 0, b[c.k] || 0) }));
-        const open = tasks.filter((t) => t.app === app.id && groupId(t.status) !== "done").length;
-        return { app, a, cells, open };
+    // The header's app filter still stores D.APPS ids; bridge to names here
+    // since the Applications list is keyed by the timeseries' own app names.
+    const selNames = new Set((selApps || []).map((id) => { const a = D.APPS.find((x) => x.id === id); return a ? a.name : null; }).filter(Boolean));
+    const rows = tsAppNames(ts)
+      .filter((name) => (!selNames.size || selNames.has(name)) && (!qq || name.toLowerCase().includes(qq)))
+      .map((name) => {
+        const a = tsAggregate(ts, name, r.a, r.b);
+        const b = hasPrev ? tsAggregate(ts, name, pa, pb) : null;
+        const cells = APPS_LIST_COLS.map((c) => ({ v: c.fmt(a[c.k] || 0), d: b ? delta(a[c.k] || 0, b[c.k] || 0) : delta(null, null) }));
+        return { name, a, cells };
       })
       .sort((x, y) => y.a.revenue - x.a.revenue);
     const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", padding: "10px 14px", background: "#FAFAFC", borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", textAlign: "right" };
@@ -414,7 +446,7 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
               <button key={id} onClick={() => setRange(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: range === id ? 650 : 550, padding: "5px 12px", borderRadius: 7, background: range === id ? "#fff" : "transparent", color: range === id ? C.ink : "#6B7180", boxShadow: range === id ? "0 1px 2px rgba(16,24,40,.1)" : "none" }}>{label}</button>
             ))}
           </div>
-          <span style={{ fontSize: 12, color: C.faint }}>{R.sub}</span>
+          <span style={{ fontSize: 12, color: C.faint }}>{ts.dates[r.a]} → {ts.dates[r.b]}</span>
         </div>
         <div style={{ ...card, overflow: "hidden" }}>
           <div style={{ overflow: "auto" }}>
@@ -423,42 +455,20 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
                 <tr>
                   <th style={{ ...hbase, textAlign: "left" }}>App</th>
                   {APPS_LIST_COLS.map((c) => <th key={c.k} style={hbase}>{c.label}</th>)}
-                  <th style={hbase}></th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ app, a, cells, open }) => {
-                  const isOpen = expandedId === app.id;
-                  return (
-                    <Fragment key={app.id}>
-                      <tr onClick={() => { setAppId(app.id); setAppTab("dashboard"); setHov(-1); }} style={{ cursor: "pointer" }}>
-                        <td style={{ ...cbase, textAlign: "left" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                            <AppAvatar app={app} size={30} radius={8} />
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{app.name}</div>
-                              <div style={{ fontSize: 11, color: C.faint2 }}>{app.tier} · {open} open</div>
-                            </div>
-                          </div>
-                        </td>
-                        {cells.map((c, i) => <td key={i} style={cbase}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></td>)}
-                        <td style={cbase}>
-                          <button onClick={(e) => { e.stopPropagation(); setExpandedId(isOpen ? null : app.id); }} title={isOpen ? "Hide charts" : "Show charts"}
-                            style={{ border: "1px solid " + C.line, background: isOpen ? C.accentBg : "#fff", color: isOpen ? C.accentDk : C.sub, cursor: "pointer", borderRadius: 7, width: 26, height: 26, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isOpen ? "rotate(180deg)" : "none", transition: "transform .12s" }}><path d="M6 9l6 6 6-6" /></svg>
-                          </button>
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr>
-                          <td colSpan={APPS_LIST_COLS.length + 2} style={{ padding: 0, borderBottom: "1px solid #F1F2F6" }}>
-                            <AppExpandedCharts app={app} dates={R.cur} agg={a} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {rows.map(({ name, cells }) => (
+                  <tr key={name} onClick={() => { setAppId(name); setAppTab("dashboard"); }} style={{ cursor: "pointer" }}>
+                    <td style={{ ...cbase, textAlign: "left" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <AppAvatar app={{ id: name, name }} size={30} radius={8} />
+                        <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 }}>{name}</div>
+                      </div>
+                    </td>
+                    {cells.map((c, i) => <td key={i} style={cbase}><div style={{ fontFamily: C.mono, fontSize: 12.5 }}>{c.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: c.d.fg }}>{c.d.arrow} {c.d.txt.replace("+", "")}</div></td>)}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -467,24 +477,25 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
       </>
     );
   }
-  const app = D.APPS.find((a) => a.id === appId);
-  const a = D.aggregate(app, R.cur), b = D.aggregate(app, R.prev);
-  const stats = [{ label: "Revenue", v: money(a.revenue), d: delta(a.revenue, b.revenue) }, { label: "eCPM", v: money2(a.ecpm), d: delta(a.ecpm, b.ecpm) }, { label: "Impressions", v: compact(a.impressions), d: delta(a.impressions, b.impressions) }, { label: "Match rate", v: pct(a.matchRate), d: delta(a.matchRate, b.matchRate) }];
-  const appTasks = tasks.filter((t) => t.app === app.id).map(taskView);
-  const cd = D.rangeDates(chartDays, 1); const vals = cd.map((ds) => D.dayRow(app, ds).revenue);
-  const mn = Math.min(...vals) * 0.9, mx = Math.max(...vals) * 1.06, sp = mx - mn || 1;
-  const X = (i) => 60 + (i / (vals.length - 1)) * 850, Y = (v) => 24 + (1 - (v - mn) / sp) * 200;
-  const line = vals.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
-  const grid = [0, 1, 2, 3, 4].map((i) => { const v = mn + (sp * (4 - i)) / 4; return { y: Y(v).toFixed(1), label: money(v) }; });
-  const step = Math.max(1, Math.round(vals.length / 6));
-  const xlabels = cd.map((ds, i) => ({ i, x: X(i), label: shortDate(ds) })).filter((t) => t.i % step === 0);
-  const hovering = hov >= 0 && hov < vals.length;
+
+  const a = tsAggregate(ts, appId, r.a, r.b);
+  const b = hasPrev ? tsAggregate(ts, appId, pa, pb) : null;
+  const dd = (k) => (b ? delta(a[k] || 0, b[k] || 0) : delta(null, null));
+  const stats = [
+    { label: "Revenue", v: money(a.revenue), d: dd("revenue") },
+    { label: "eCPM", v: money2(a.ecpm), d: dd("ecpm") },
+    { label: "Impressions", v: compact(a.impressions), d: dd("impressions") },
+    { label: "Match rate", v: pct100(a.matchRate), d: dd("matchRate") },
+  ];
+  // taskAppMap resolves real ClickUp tasks by name match (see
+  // timeseriesSource.ts); demo tasks already carry a usable t.app id/name.
+  const appTasks = tasks.filter((t) => (taskAppMap.get(t.id) || t.app) === appId).map(taskView);
   return (
     <div>
       <button onClick={() => setAppId(null)} style={{ border: "none", background: "none", cursor: "pointer", color: C.sub, fontSize: 13, marginBottom: 12 }}>← Applications</button>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-        <AppAvatar app={app} size={44} radius={11} />
-        <div><div style={{ fontSize: 18, fontWeight: 700 }}>{app.name}</div><div style={{ fontSize: 12, color: C.faint2 }}>{app.cat} · {app.tier} · {app.store}</div></div>
+        <AppAvatar app={{ id: appId, name: appId }} size={44} radius={11} />
+        <div style={{ fontSize: 18, fontWeight: 700 }}>{appId}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
         {stats.map((s) => <div key={s.label} style={{ ...card, padding: "12px 14px" }}><div style={{ fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}>{s.label}</div><div style={{ fontFamily: C.mono, fontSize: 18, fontWeight: 600, margin: "4px 0" }}>{s.v}</div><div style={{ fontFamily: C.mono, fontSize: 10.5, color: s.d.fg }}>{s.d.arrow} {s.d.txt.replace("+", "")}</div></div>)}
@@ -492,39 +503,25 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
       <div style={{ display: "flex", gap: 6, marginBottom: 14, borderBottom: "1px solid " + C.line }}>
         {[["dashboard", "Dashboard"], ["tasks", "Tasks"]].map(([id, label]) => <button key={id} onClick={() => setAppTab(id)} style={{ border: "none", background: "none", cursor: "pointer", padding: "8px 2px", marginRight: 14, fontSize: 13.5, fontWeight: appTab === id ? 700 : 500, color: appTab === id ? C.accent : C.ink, borderBottom: appTab === id ? "2px solid " + C.accent : "2px solid transparent" }}>{label}</button>)}
       </div>
-      {appTab === "dashboard" && (
-        <div style={{ ...card, padding: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}><b style={{ fontSize: 14 }}>Revenue</b><div style={{ flex: 1 }} /><div style={{ display: "flex", background: "#EDEEF2", borderRadius: 8, padding: 3 }}>{[[14, "14D"], [30, "30D"], [90, "90D"]].map(([n, label]) => <button key={n} onClick={() => { setChartDays(n); setHov(-1); }} style={{ border: "none", cursor: "pointer", fontSize: 12, fontWeight: chartDays === n ? 650 : 550, padding: "4px 10px", borderRadius: 6, background: chartDays === n ? "#fff" : "transparent", color: chartDays === n ? C.ink : "#6B7180" }}>{label}</button>)}</div></div>
-          <svg viewBox="0 0 920 260" style={{ width: "100%" }} onMouseLeave={() => setHov(-1)}>
-            {grid.map((g, i) => <g key={i}><line x1="60" x2="910" y1={g.y} y2={g.y} stroke="#F1F2F6" /><text x="52" y={Number(g.y) + 3} textAnchor="end" fontSize="10" fill="#9AA0AE" fontFamily="monospace">{g.label}</text></g>)}
-            <path d={line + " L" + X(vals.length - 1).toFixed(1) + " 232 L60 232 Z"} fill="rgba(91,75,232,.08)" />
-            <path d={line} fill="none" stroke={C.accent} strokeWidth="2" />
-            {xlabels.map((t) => <text key={t.i} x={t.x} y="250" textAnchor="middle" fontSize="10" fill="#9AA0AE">{t.label}</text>)}
-            {cd.map((ds, i) => <rect key={i} x={X(i) - 850 / vals.length / 2} y="24" width={850 / vals.length} height="208" fill="transparent" onMouseEnter={() => setHov(i)} />)}
-            {hovering && <><line x1={X(hov)} x2={X(hov)} y1="24" y2="232" stroke={C.accent} strokeDasharray="3 3" /><circle cx={X(hov)} cy={Y(vals[hov])} r="4" fill={C.accent} /></>}
-          </svg>
-          {hovering && <div style={{ fontFamily: C.mono, fontSize: 12, color: C.sub, marginTop: 6 }}>{cd[hov]} · {money(vals[hov])}</div>}
-        </div>
-      )}
-      {appTab === "tasks" && (appTasks.length ? <TaskList rows={appTasks} /> : <Empty>No tasks for this app.</Empty>)}
+      {appTab === "dashboard" && <AppDashboardCharts ts={ts} appName={appId} a={r.a} b={r.b} agg={a} />}
+      {appTab === "tasks" && (appTasks.length ? <TaskList rows={appTasks} /> : <Empty>No tasks matched to this app.</Empty>)}
     </div>
   );
 }
 
-// Revenue / eCPM / Impressions / ARPDAV, side by side, for the row's own
-// selected range — the same D.dayRow the list metrics are aggregated from.
-function AppExpandedCharts({ app, dates, agg }) {
-  const days = useMemo(() => dates.map((ds) => D.dayRow(app, ds)), [app, dates]);
+// Revenue / eCPM / Impressions / ARPDAV, side by side, for the selected range.
+function AppDashboardCharts({ ts, appName, a, b, agg }) {
+  const days = useMemo(() => { const out = []; for (let i = a; i <= b; i++) out.push(tsDayRowAt(ts, appName, i)); return out; }, [ts, appName, a, b]);
   const blocks = [
-    { label: "Revenue", values: days.map((r) => r.revenue), total: agg.revenue, fmt: money, color: appColor(app.id) },
-    { label: "eCPM", values: days.map((r) => r.ecpm), total: agg.ecpm, fmt: money2, color: "#0E9F6E" },
-    { label: "Impressions", values: days.map((r) => r.impressions), total: agg.impressions, fmt: compact, color: "#D9730D" },
-    { label: "ARPDAV", values: days.map((r) => (r.dav ? r.revenue / r.dav : 0)), total: agg.arpdav, fmt: money4, color: "#7C3AED" },
+    { label: "Revenue", values: days.map((r) => r.revenue || 0), total: agg.revenue, fmt: money, color: appColor(appName) },
+    { label: "eCPM", values: days.map((r) => r.ecpm || 0), total: agg.ecpm, fmt: money2, color: "#0E9F6E" },
+    { label: "Impressions", values: days.map((r) => r.impressions || 0), total: agg.impressions, fmt: compact, color: "#D9730D" },
+    { label: "ARPDAV", values: days.map((r) => r.arpdav || 0), total: agg.arpdav, fmt: money4, color: "#7C3AED" },
   ];
   return (
-    <div style={{ padding: 16, background: C.panel }}>
+    <div style={{ ...card, padding: 16 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-        {blocks.map((b) => <MiniMetricChart key={b.label} {...b} />)}
+        {blocks.map((bl) => <MiniMetricChart key={bl.label} {...bl} />)}
       </div>
     </div>
   );
@@ -784,8 +781,11 @@ function TasksTab({ tasks, taskView, tview, setTview, tlist, setTlist, tassignee
 }
 
 function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSaved }) {
+  const clickupFailed = D.IS_LIVE && D.TASKS_SOURCE !== "clickup";
   const connections = [
-    { mark: "C", color: "#7B68EE", name: "ClickUp", detail: "Space JedyApps · folder 901210858217 · " + tasks.length + " tasks synced", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
+    clickupFailed
+      ? { mark: "C", color: "#7B68EE", name: "ClickUp", detail: "Could not load tasks from ClickUp — showing " + tasks.length + " demo tasks instead. Check the CLICKUP_TOKEN secret and folder id, then see the browser console for the fetch error.", status: "Action needed", sfg: "#B45309", sbg: "#FEF3C7" }
+      : { mark: "C", color: "#7B68EE", name: "ClickUp", detail: "Space JedyApps · folder 901210858217 · " + tasks.length + " tasks synced", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
     { mark: "A", color: "#EA4335", name: "Google AdMob", detail: "pub-9924… · mediation report API · 12 apps", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
     { mark: "F", color: "#0E9F6E", name: "Firebase", detail: "Remote Config experiments · read-only", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
     { mark: "M", color: "#1877F2", name: "Meta Audience Network", detail: "Placement mapping incomplete for 6 apps", status: "Action needed", sfg: "#B45309", sbg: "#FEF3C7" },
