@@ -46,6 +46,16 @@ function delta(cur, prev, invert) {
 const initials = (s) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 const appInitials = (name) => { const w = name.replace(/[^\w\s&]/g, "").split(/\s+/).filter(Boolean); return ((w[0] || "")[0] + ((w[1] || "")[0] || "")).toUpperCase(); };
 function appColor(id) { const p = ["#5B4BE8", "#0E9F6E", "#D9730D", "#C2255C", "#0891B2", "#7C3AED", "#B45309", "#2563EB", "#DB2777", "#059669", "#E02D3C", "#6D28D9"]; let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; }
+// Real store icon when the live source resolved one (see liveSource.ts /
+// admob.ts fetchAppIcons); falls back to the colored-initials avatar on a
+// broken/missing URL (demo data, or an app with no linked store listing).
+function AppAvatar({ app, size, radius }) {
+  const [broken, setBroken] = useState(false);
+  if (app.icon && !broken) {
+    return <img src={app.icon} onError={() => setBroken(true)} alt="" style={{ width: size, height: size, flex: "none", borderRadius: radius, objectFit: "cover", background: "#fff", border: "1px solid #E9EAF0" }} />;
+  }
+  return <div style={{ width: size, height: size, flex: "none", borderRadius: radius, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: Math.round(size * 0.36), fontWeight: 700 }}>{appInitials(app.name)}</div>;
+}
 const member = (name) => D.MEMBERS.find((x) => x.name === name) || { name: name || "Unassigned", initials: name ? initials(name) : "—", color: "#B4B9C4" };
 const appName = (id) => { const a = D.APPS.find((x) => x.id === id); return a ? a.name : "—"; };
 const group = (status) => GROUPS[S2G[status] || "todo"];
@@ -424,7 +434,7 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
                       <tr onClick={() => { setAppId(app.id); setAppTab("dashboard"); setHov(-1); }} style={{ cursor: "pointer" }}>
                         <td style={{ ...cbase, textAlign: "left" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                            <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{appInitials(app.name)}</div>
+                            <AppAvatar app={app} size={30} radius={8} />
                             <div style={{ minWidth: 0 }}>
                               <div style={{ fontSize: 13, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 200 }}>{app.name}</div>
                               <div style={{ fontSize: 11, color: C.faint2 }}>{app.tier} · {open} open</div>
@@ -473,7 +483,7 @@ function AppsTab({ R, range, setRange, q, selApps, appId, setAppId, appTab, setA
     <div>
       <button onClick={() => setAppId(null)} style={{ border: "none", background: "none", cursor: "pointer", color: C.sub, fontSize: 13, marginBottom: 12 }}>← Applications</button>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-        <div style={{ width: 44, height: 44, borderRadius: 11, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 16 }}>{appInitials(app.name)}</div>
+        <AppAvatar app={app} size={44} radius={11} />
         <div><div style={{ fontSize: 18, fontWeight: 700 }}>{app.name}</div><div style={{ fontSize: 12, color: C.faint2 }}>{app.cat} · {app.tier} · {app.store}</div></div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>

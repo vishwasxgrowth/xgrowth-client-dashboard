@@ -22,6 +22,18 @@ export async function generateMediationReport(accountName, reportSpec, token) {
   catch { return text.split("\n").filter(Boolean).map((l) => JSON.parse(l)); }
 }
 
+// App icons: AdMob's own API has no icon field, so this goes through the
+// server proxy, which resolves each app's icon from its linked store listing
+// (see functions/index.js's /app-icons route) and caches the result. Returns
+// { [admobAppId]: iconUrl }; apps with no linked store listing are just absent.
+export async function fetchAppIcons(accountName) {
+  if (!BASE) return {}; // only available via the proxy (needs a server-side fetch)
+  const url = BASE + "/app-icons?clientId=" + encodeURIComponent(CLIENT) + "&account=" + encodeURIComponent(accountName);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("app-icons " + resp.status);
+  return resp.json();
+}
+
 // Per-ad-unit mediation report (AD_UNIT dimension) for test analysis.
 export async function adUnitReport(accountName, startDate, endDate) {
   const spec = {

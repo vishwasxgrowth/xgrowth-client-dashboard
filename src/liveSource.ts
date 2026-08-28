@@ -1,6 +1,6 @@
 // @ts-nocheck
 import * as demo from "./data";
-import { generateMediationReport, adUnitReport } from "./admob";
+import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
 import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -30,6 +30,12 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     if (dateV > latest) latest = dateV;
   }
   const APPS = [...appsById.values()];
+  // Icons are cosmetic and best-effort: a scrape failure or missing store
+  // listing must not block the dashboard from loading real metrics.
+  try {
+    const icons = await fetchAppIcons(accountName);
+    for (const app of APPS) if (icons[app.id]) app.icon = icons[app.id];
+  } catch (e) {}
   const TODAY = latest ? new Date(new Date(latest + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10) : demo.TODAY;
   // dau/dav stay 0 here: the AdMob mediation report has no users dimension.
   // They light up once a GA4 users pull is wired into this live source.
