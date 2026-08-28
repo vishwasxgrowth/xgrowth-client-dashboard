@@ -52,7 +52,10 @@ export function dayRow(app, dateStr) {
   const requests = Math.round(impressions / matchRate);
   const clicks = Math.round(impressions * app.ctr * (0.9 + rand(s ^ 0xabc) * 0.2));
   const revenue = (impressions / 1000) * ecpm;
-  return { date: dateStr, dau: Math.round(dau), impressions, requests, matched: Math.round(requests * matchRate), clicks, revenue, ecpm, matchRate, ctr: clicks / impressions, showRate: Math.min(0.99, 0.72 + rand(s ^ 0x777) * 0.22) };
+  // Ad viewers (DAV): the subset of DAU that actually saw an ad that day, a
+  // narrower and separate figure from DAU itself so ARPDAV != ARPDAU.
+  const dav = Math.round(dau * (0.55 + rand(s ^ 0x2c9e) * 0.35));
+  return { date: dateStr, dau: Math.round(dau), dav, impressions, requests, matched: Math.round(requests * matchRate), clicks, revenue, ecpm, matchRate, ctr: clicks / impressions, showRate: Math.min(0.99, 0.72 + rand(s ^ 0x777) * 0.22) };
 }
 
 /** Inclusive date list ending `endOffset` days before TODAY, `days` long. */
@@ -64,19 +67,21 @@ export function rangeDates(days, endOffset = 1) {
 }
 
 export function aggregate(app, dates) {
-  let revenue = 0, impressions = 0, requests = 0, matched = 0, clicks = 0, dau = 0, show = 0;
+  let revenue = 0, impressions = 0, requests = 0, matched = 0, clicks = 0, dau = 0, dav = 0, show = 0;
   const series = dates.map((ds) => {
     const r = dayRow(app, ds);
     revenue += r.revenue; impressions += r.impressions; requests += r.requests;
-    matched += r.matched; clicks += r.clicks; dau += r.dau; show += r.showRate;
+    matched += r.matched; clicks += r.clicks; dau += r.dau; dav += r.dav; show += r.showRate;
     return r;
   });
   const n = dates.length || 1;
   return {
     series, revenue, impressions, requests, matched, clicks,
     dau: dau / n,
+    dav: dav / n,
     ecpm: impressions ? (revenue / impressions) * 1000 : 0,
     arpdau: dau ? revenue / dau : 0,
+    arpdav: dav ? revenue / dav : 0,
     matchRate: requests ? matched / requests : 0,
     ctr: impressions ? clicks / impressions : 0,
     showRate: show / n,

@@ -202,12 +202,95 @@ exports.xgClientApi = onRequest(
         return;
       }
 
+      // ---- App icons: AdMob has no icon field, so resolve one indirectly ----
+      // via each app's linked store listing (iOS: Apple's public Lookup API;
+      // Android: the og:image meta tag off the public Play Store page). Result
+      // keyed by AdMob appId (the same id the mediation report's APP dimension
+      // uses), cached in the bucket for a week since store icons rarely change.
+      if (path === "/app-icons") {
+        if (!clientId) { res.status(400).json({ error: "clientId required" }); return; }
+        const account = String(req.query.account || "");
+        if (!account) { res.status(400).json({ error: "account required" }); return; }
+        const cacheKey = clientId + "/icons.json";
+        const now = Date.now();
+        try {
+          const [buf] = await storage.bucket(BUCKET).file(cacheKey).download();
+          const cached = JSON.parse(buf.toString("utf8"));
+          if (cached.fetchedAt && now - cached.fetchedAt < 7 * 24 * 3600 * 1000) {
+            res.set("Content-Type", "application/json").json(cached.icons);
+            return;
+          }
+        } catch (e) { /* no cache yet (or unreadable) -- fetch fresh below */ }
+
+        try {
+          const token = await accessTokenFor(clientId);
+          const apps = await listAdmobApps_(account, token);
+          const icons = await resolveAppIcons_(apps);
+          try { await storage.bucket(BUCKET).file(cacheKey).save(JSON.stringify({ fetchedAt: now, icons }), { contentType: "application/json", resumable: false }); } catch (e) {}
+          res.set("Content-Type", "application/json").json(icons);
+        } catch (e) {
+          res.status(500).json({ error: "icon fetch failed: " + String((e && e.message) || e) });
+        }
+        return;
+      }
+
       res.status(404).json({ error: "not found" });
     } catch (e) {
       res.status(500).json({ error: String((e && e.message) || e) });
     }
   }
 );
+
+// ---- AdMob apps.list + store-listing icon lookup (see /app-icons above) ----
+async function listAdmobApps_(account, token) {
+  const apps = [];
+  let pageToken = "";
+  for (let i = 0; i < 20; i++) { // hard cap: a paging bug must not loop forever
+    const url = "https://admob.googleapis.com/v1/" + account + "/apps?pageSize=200" +
+      (pageToken ? "&pageToken=" + encodeURIComponent(pageToken) : "");
+    const r = await fetch(url, { headers: { Authorization: "Bearer " + token } });
+    if (!r.ok) throw new Error("AdMob apps.list " + r.status + ": " + (await r.text()));
+    const j = await r.json();
+    apps.push(...(j.apps || []));
+    if (!j.nextPageToken) break;
+    pageToken = j.nextPageToken;
+  }
+  return apps;
+}
+
+async function resolveAppIcons_(apps) {
+  const icons = {};
+  const targets = apps.filter((a) => a.appId && a.linkedAppInfo && a.linkedAppInfo.appStoreId);
+  const CONC = 8; // bounded pool: don't fire one outbound fetch per app at once
+  let idx = 0;
+  async function worker() {
+    while (idx < targets.length) {
+      const a = targets[idx++];
+      const storeId = a.linkedAppInfo.appStoreId;
+      try {
+        if (a.platform === "IOS") {
+          const r = await fetch("https://itunes.apple.com/lookup?id=" + encodeURIComponent(storeId));
+          if (r.ok) {
+            const j = await r.json();
+            const url = j.results && j.results[0] && j.results[0].artworkUrl512;
+            if (url) icons[a.appId] = url;
+          }
+        } else {
+          const r = await fetch("https://play.google.com/store/apps/details?id=" + encodeURIComponent(storeId) + "&hl=en", {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; xGrowthDashboard/1.0)" },
+          });
+          if (r.ok) {
+            const html = await r.text();
+            const m = html.match(/<meta property="og:image" content="([^"]+)"/);
+            if (m) icons[a.appId] = m[1];
+          }
+        }
+      } catch (e) { /* one app's icon failing must not fail the whole batch */ }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(CONC, targets.length) }, worker));
+  return icons;
+}
 
 // ---- Run the vendored canonical engines to produce one day's digest HTML ----
 // digest.mjs and render-html.mjs are CLI scripts (byte copies from xgrowth-reports),

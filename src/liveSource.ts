@@ -1,6 +1,6 @@
 // @ts-nocheck
 import * as demo from "./data";
-import { generateMediationReport, adUnitReport } from "./admob";
+import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
 import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -26,17 +26,25 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     const revenue = gm(r.metricValues?.["ESTIMATED_EARNINGS"]), impressions = gm(r.metricValues?.["IMPRESSIONS"]);
     const requests = gm(r.metricValues?.["AD_REQUESTS"]), matched = gm(r.metricValues?.["MATCHED_REQUESTS"]), clicks = gm(r.metricValues?.["CLICKS"]);
     const ecpm = impressions ? (revenue / impressions) * 1000 : gm(r.metricValues?.["OBSERVED_ECPM"]);
-    rowLookup.set(id + "|" + dateV, { date: dateV, revenue, impressions, requests, matched, clicks, dau: 0, ecpm, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 });
+    rowLookup.set(id + "|" + dateV, { date: dateV, revenue, impressions, requests, matched, clicks, dau: 0, dav: 0, ecpm, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 });
     if (dateV > latest) latest = dateV;
   }
   const APPS = [...appsById.values()];
+  // Icons are cosmetic and best-effort: a scrape failure or missing store
+  // listing must not block the dashboard from loading real metrics.
+  try {
+    const icons = await fetchAppIcons(accountName);
+    for (const app of APPS) if (icons[app.id]) app.icon = icons[app.id];
+  } catch (e) {}
   const TODAY = latest ? new Date(new Date(latest + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10) : demo.TODAY;
-  const zero = { revenue: 0, impressions: 0, requests: 0, matched: 0, clicks: 0, dau: 0, ecpm: 0, matchRate: 0, ctr: 0, showRate: 0 };
+  // dau/dav stay 0 here: the AdMob mediation report has no users dimension.
+  // They light up once a GA4 users pull is wired into this live source.
+  const zero = { revenue: 0, impressions: 0, requests: 0, matched: 0, clicks: 0, dau: 0, dav: 0, ecpm: 0, matchRate: 0, ctr: 0, showRate: 0 };
   const dayRow = (app, ds) => rowLookup.get(app.id + "|" + ds) || { date: ds, ...zero };
   const aggregate = (app, dates) => {
     let revenue = 0, impressions = 0, requests = 0, matched = 0, clicks = 0;
     for (const ds of dates) { const r = dayRow(app, ds); revenue += r.revenue; impressions += r.impressions; requests += r.requests; matched += r.matched; clicks += r.clicks; }
-    return { revenue, impressions, requests, matched, clicks, dau: 0, ecpm: impressions ? (revenue / impressions) * 1000 : 0, arpdau: 0, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 };
+    return { revenue, impressions, requests, matched, clicks, dau: 0, dav: 0, ecpm: impressions ? (revenue / impressions) * 1000 : 0, arpdau: 0, arpdav: 0, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 };
   };
   let TASKS = demo.TASKS; let LISTS_META = null;
   try { const { listsMeta, tasks } = await getFolderData(folderId); if (tasks.length) { TASKS = tasks; LISTS_META = listsMeta; } } catch (e) {}
