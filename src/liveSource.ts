@@ -46,7 +46,14 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     for (const ds of dates) { const r = dayRow(app, ds); revenue += r.revenue; impressions += r.impressions; requests += r.requests; matched += r.matched; clicks += r.clicks; }
     return { revenue, impressions, requests, matched, clicks, dau: 0, dav: 0, ecpm: impressions ? (revenue / impressions) * 1000 : 0, arpdau: 0, arpdav: 0, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 };
   };
-  let TASKS = demo.TASKS; let LISTS_META = null;
-  try { const { listsMeta, tasks } = await getFolderData(folderId); if (tasks.length) { TASKS = tasks; LISTS_META = listsMeta; } } catch (e) {}
-  return { TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
+  let TASKS = demo.TASKS; let LISTS_META = null; let TASKS_SOURCE = "demo-fallback";
+  try {
+    const { listsMeta, tasks } = await getFolderData(folderId);
+    // An empty list is a legitimate ClickUp answer (e.g. an empty folder), not
+    // a failure — only an actual fetch error should fall back to demo data.
+    TASKS = tasks; LISTS_META = listsMeta; TASKS_SOURCE = "clickup";
+  } catch (e) {
+    console.warn("[clickup] could not load tasks, falling back to demo data:", e);
+  }
+  return { IS_LIVE: true, TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
 }
