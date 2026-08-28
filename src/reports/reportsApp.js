@@ -780,8 +780,13 @@
           // Late web-font or image layout can change height after load.
           setTimeout(fitFrame, 150);
         };
+        // The digest's own CSS honours :root[data-theme], but srcdoc is a
+        // separate document that otherwise falls back to prefers-color-scheme.
+        // Passing the shell's actual theme through keeps the embedded report
+        // in step with the dashboard chrome instead of the OS/browser setting.
+        var theme = document.documentElement.getAttribute('data-theme') || 'light';
         el.reportFrame.srcdoc =
-          '<!doctype html><html><head><meta charset="utf-8">' +
+          '<!doctype html><html data-theme="' + theme + '"><head><meta charset="utf-8">' +
           '<meta name="viewport" content="width=device-width, initial-scale=1">' +
           '<style>html,body{margin:0;padding:0}</style></head><body>' + html + '</body></html>';
         setStatus('');
