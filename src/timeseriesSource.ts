@@ -44,9 +44,10 @@ export function tsDayRowAt(ts, appName, i) {
   const revenue = s && s.revenue ? s.revenue[i] : null;
   const impressions = s && s.impressions ? s.impressions[i] : null;
   const matched = s && s.matched ? s.matched[i] : null;
+  const dau = s && s.dau ? s.dau[i] : null;
   const dav = s && s.dav ? s.dav[i] : null;
   return {
-    date, revenue, impressions, matched, dav,
+    date, revenue, impressions, matched, dau, dav,
     ecpm: impressions ? (revenue / impressions) * 1000 : null,
     arpdav: dav ? revenue / dav : null,
   };
@@ -71,6 +72,7 @@ export function tsAggregate(ts, appName, a, b) {
   return {
     revenue, impressions, requests, matched,
     dau: dauN ? dau / dauN : 0,
+    dav: davN ? dav / davN : 0,
     ecpm: impressions ? (revenue / impressions) * 1000 : 0,
     matchRate: requests ? (matched / requests) * 100 : 0,
     showRate: matched ? (impressions / matched) * 100 : 0,
