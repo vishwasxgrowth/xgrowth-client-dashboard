@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as demo from "./data";
 import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
-import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
+import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus, getWorkspaceMembers } from "./clickup";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
 const fmtDate = (v) => (v && v.length === 8 ? v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6, 8) : v);
@@ -55,5 +55,15 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
   } catch (e) {
     console.warn("[clickup] could not load tasks, falling back to demo data:", e);
   }
-  return { IS_LIVE: true, TODAY, MEMBERS: demo.MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
+  // Real members, not the 4-person demo roster — that list included a person
+  // who isn't even in this workspace, so anyone else assigned in ClickUp fell
+  // back to a generic gray avatar regardless of who they actually are.
+  let MEMBERS = demo.MEMBERS;
+  try {
+    const real = await getWorkspaceMembers();
+    if (real.length) MEMBERS = real;
+  } catch (e) {
+    console.warn("[clickup] could not load workspace members, using the demo roster:", e);
+  }
+  return { IS_LIVE: true, TODAY, MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
 }
