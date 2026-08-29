@@ -261,7 +261,34 @@ function pushKey_() {
 }
 
 function pushTimeseries() {
-  var payload = JSON.stringify(build_());
+  var snapshot = build_();
+  var payload = JSON.stringify(snapshot);
+  var csvErrors = [];
+
+  // Push the report feed before the JSON feed so raw Daily Reports normally
+  // arrive first. If this fails, keep pushing the JSON feed so Trends remain
+  // current; the backend can reconcile missing AppDaily rows from that feed and
+  // the trigger failure makes the CSV problem visible in Apps Script logs.
+  try {
+    pushTabCsv_('AppDaily', CONFIG.tabs.appDaily, true);
+  } catch (err) {
+    csvErrors.push('AppDaily: ' + err);
+    Logger.log('push AppDaily.csv failed: ' + err);
+  }
+  [
+    ['Users', CONFIG.tabs.users],
+    ['Country', CONFIG.tabs.country],
+    ['Source', CONFIG.tabs.source],
+    ['Format', CONFIG.tabs.format],
+    ['Privacy', CONFIG.tabs.privacy]
+  ].forEach(function (item) {
+    try { pushTabCsv_(item[0], item[1], false); }
+    catch (err) {
+      csvErrors.push(item[0] + ': ' + err);
+      Logger.log('push ' + item[0] + '.csv failed: ' + err);
+    }
+  });
+
   var url = PUSH_URL + '?clientId=' + encodeURIComponent(CONFIG.client) + '&key=' + encodeURIComponent(pushKey_());
   var res = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', payload: payload,
@@ -270,45 +297,51 @@ function pushTimeseries() {
   var code = res.getResponseCode();
   Logger.log('push status ' + code + ': ' + res.getContentText().slice(0, 200));
   if (code >= 300) throw new Error('push failed ' + code + ': ' + res.getContentText().slice(0, 200));
-
-  // Also push raw CSVs so the Daily-report route can run the canonical digest
-  // engine on real rows for any date. Optional tabs are best-effort.
-  [
-    ['AppDaily', CONFIG.tabs.appDaily],
-    ['Users', CONFIG.tabs.users],
-    ['Country', CONFIG.tabs.country],
-    ['Source', CONFIG.tabs.source],
-    ['Format', CONFIG.tabs.format],
-    ['Privacy', CONFIG.tabs.privacy]
-  ].forEach(function (item) { pushTabCsv_(item[0], item[1]); });
+  if (csvErrors.length) throw new Error('push completed with CSV errors: ' + csvErrors.join('; '));
   return code;
 }
 
-// Upload one tab as <clientId>/<label>.csv to the same push endpoint. Best-effort:
-// a failure here is logged but does not fail the timeseries push above.
-function pushTabCsv_(label, tabName) {
-  try {
-    var tab = readTab_(tabName, false);
-    if (!tab || !tab.rows.length) { Logger.log('skip ' + label + '.csv (no rows)'); return; }
-    var lines = [tab.header.join(',')];
-    tab.rows.forEach(function (r) {
-      lines.push(r.map(function (v) {
-        var s = (v === null || v === undefined) ? '' : String(v);
-        return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-      }).join(','));
-    });
-    var url = PUSH_URL.replace('/timeseries-push', '/csv-push') +
-      '?clientId=' + encodeURIComponent(CONFIG.client) +
-      '&name=' + encodeURIComponent(label) +
-      '&key=' + encodeURIComponent(pushKey_());
-    var res = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'text/csv', payload: lines.join('\n'),
-      headers: { 'X-Push-Key': pushKey_() }, muteHttpExceptions: true
-    });
-    Logger.log('push ' + label + '.csv status ' + res.getResponseCode());
-  } catch (err) {
-    Logger.log('push ' + label + '.csv failed: ' + err);
+// Upload one tab as <clientId>/<label>.csv to the same push endpoint.
+function pushTabCsv_(label, tabName, required) {
+  var tab = readTab_(tabName, false);
+  if (!tab || !tab.rows.length) {
+    if (required) throw new Error(label + '.csv has no rows');
+    Logger.log('skip ' + label + '.csv (no rows)');
+    return null;
   }
+  var url = PUSH_URL.replace('/timeseries-push', '/csv-push') +
+    '?clientId=' + encodeURIComponent(CONFIG.client) +
+    '&name=' + encodeURIComponent(label) +
+    '&key=' + encodeURIComponent(pushKey_());
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post', contentType: 'text/csv', payload: tabToCsv_(tab),
+    headers: { 'X-Push-Key': pushKey_() }, muteHttpExceptions: true
+  });
+  var code = res.getResponseCode();
+  Logger.log('push ' + label + '.csv status ' + code);
+  if (code >= 300) throw new Error(label + '.csv push failed ' + code + ': ' + res.getContentText().slice(0, 200));
+  return code;
+}
+
+function tabToCsv_(tab) {
+  var lines = [tab.header.map(function (h) { return csvCell_(h, ''); }).join(',')];
+  tab.rows.forEach(function (r) {
+    lines.push(r.map(function (v, i) {
+      return csvCell_(v, tab.header[i]);
+    }).join(','));
+  });
+  return lines.join('\n');
+}
+
+function csvCell_(v, header) {
+  var s;
+  if (String(header || '').toUpperCase() === 'DATE') {
+    var d = ymd_(v);
+    s = /^\d{8}$/.test(d) ? d : ((v === null || v === undefined) ? '' : String(v));
+  } else {
+    s = (v === null || v === undefined) ? '' : String(v);
+  }
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
 function installDailyTrigger() {

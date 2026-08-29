@@ -41,6 +41,10 @@ allowed origins are configured.
 - Apps Script pushes `timeseries.json` plus raw CSV tabs (`AppDaily`, `Users`,
   `Country`, `Source`, `Format`, `Privacy`) into Google Cloud Storage through
   `/timeseries-push` and `/csv-push`.
+- If the JSON timeseries reaches a newer date before `AppDaily.csv`, the
+  backend reconciles the missing AppDaily rows from the timeseries feed,
+  persists that recovered report input, and exposes report readiness in
+  `/report-manifest`.
 - The dashboard's default production data path reads `/timeseries`, avoiding
   startup AdMob and ClickUp API calls.
 - ClickUp task lists, task details, comments, and status updates still go
@@ -49,5 +53,6 @@ allowed origins are configured.
 - If the cached monetization feed cannot load, the UI shows an explicit error
   state before using bundled demo data. Local task edits are labeled as local
   when ClickUp creation/status sync is not connected.
-- Daily report routes (`/report-manifest`, `/report-day`) render from the CSVs
-  pushed by Apps Script and cache generated HTML in the bucket.
+- Daily report routes (`/report-manifest`, `/report-day`) render from raw CSVs
+  when available, fall back to timeseries-reconciled AppDaily rows for missing
+  dates, and cache generated HTML in the bucket.

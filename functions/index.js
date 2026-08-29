@@ -37,6 +37,7 @@ const CACHE = {
   report: "public, max-age=900, stale-while-revalidate=3600",
   icon: "public, max-age=86400, stale-while-revalidate=604800",
 };
+const SYNTHETIC_APPDAILY_HEADER = ["DATE", "APP", "ESTIMATED_EARNINGS", "IMPRESSIONS", "AD_REQUESTS", "MATCHED_REQUESTS", "IMPRESSION_CTR"];
 
 const tokenCache = {}; // clientId -> { token, exp }
 const tsCache = {};   // reports timeseries cache
@@ -201,6 +202,157 @@ async function loadCsv(clientId, name) {
   const [buf] = await storage.bucket(BUCKET).file(clientId + "/" + name + ".csv").download();
   return buf.toString("utf8");
 }
+async function loadTimeseries(clientId) {
+  const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
+  return JSON.parse(buf.toString("utf8"));
+}
+function datesFromTimeseries(ts) {
+  return Array.isArray(ts && ts.dates)
+    ? ts.dates.map((d) => String(d)).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().reverse()
+    : [];
+}
+function compactDate(iso) {
+  return String(iso || "").replace(/-/g, "");
+}
+function csvEscape(value) {
+  const s = value == null ? "" : String(value);
+  return /[",\r\n]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
+}
+function csvLine(values) {
+  return values.map(csvEscape).join(",");
+}
+function headerCellsFromCsv(text) {
+  const first = String(text || "").split(/\r?\n/, 1)[0] || "";
+  const cells = csvCells(first).map((h) => h.trim().replace(/^"|"$/g, ""));
+  return cells.length && cells.some(Boolean) ? cells : SYNTHETIC_APPDAILY_HEADER.slice();
+}
+function seriesValue(series, key, idx) {
+  const values = series && series[key];
+  return Array.isArray(values) ? values[idx] : null;
+}
+function syntheticAppDailyRows(ts, isoDates, headerCells) {
+  const tsDates = Array.isArray(ts && ts.dates) ? ts.dates.map(String) : [];
+  const apps = (ts && ts.apps && typeof ts.apps === "object") ? ts.apps : {};
+  const indexByDate = new Map(tsDates.map((date, idx) => [date, idx]));
+  const rows = [];
+  const producedDates = new Set();
+  const missingDates = [];
+  const header = headerCells.map((h) => h.trim().toUpperCase());
+  for (const iso of isoDates) {
+    const idx = indexByDate.get(iso);
+    if (idx == null) { missingDates.push(iso); continue; }
+    let count = 0;
+    for (const app of Object.keys(apps).sort()) {
+      const series = apps[app];
+      const revenue = seriesValue(series, "revenue", idx);
+      const impressions = seriesValue(series, "impressions", idx);
+      const requests = seriesValue(series, "requests", idx);
+      const matched = seriesValue(series, "matched", idx);
+      const hasData = [revenue, impressions, requests, matched].some((v) => v !== null && v !== undefined);
+      if (!hasData) continue;
+      const values = header.map((name) => {
+        if (name === "DATE") return compactDate(iso);
+        if (name === "APP") return app;
+        if (name === "ESTIMATED_EARNINGS") return revenue;
+        if (name === "IMPRESSIONS") return impressions;
+        if (name === "AD_REQUESTS") return requests;
+        if (name === "MATCHED_REQUESTS") return matched;
+        // The timeseries feed does not store click counts or CTR, so leave
+        // those optional raw-feed fields blank instead of inventing precision.
+        return "";
+      });
+      rows.push(csvLine(values));
+      count++;
+    }
+    if (count) producedDates.add(iso);
+    else missingDates.push(iso);
+  }
+  return { rows, producedDates: [...producedDates].sort().reverse(), missingDates };
+}
+function mergeAppDailyWithTimeseries(rawCsv, ts) {
+  const raw = String(rawCsv || "").trimEnd();
+  const rawDates = datesFromCsv(raw);
+  const tsDates = datesFromTimeseries(ts);
+  const rawSet = new Set(rawDates);
+  const missingFromCsv = tsDates.filter((date) => !rawSet.has(date));
+  if (!missingFromCsv.length) {
+    return { text: raw, dates: rawDates, rawDates, timeseriesDates: tsDates, reconciledDates: [], pendingDates: [] };
+  }
+  const headerCells = raw ? headerCellsFromCsv(raw) : SYNTHETIC_APPDAILY_HEADER.slice();
+  const { rows, producedDates, missingDates } = syntheticAppDailyRows(ts, missingFromCsv.slice().reverse(), headerCells);
+  const headerLine = raw ? raw.split(/\r?\n/, 1)[0] : csvLine(headerCells);
+  const base = raw || headerLine;
+  const text = rows.length ? base + (base.endsWith("\n") ? "" : "\n") + rows.join("\n") : base;
+  const dates = datesFromCsv(text);
+  return {
+    text,
+    dates,
+    rawDates,
+    timeseriesDates: tsDates,
+    reconciledDates: producedDates,
+    pendingDates: missingDates,
+  };
+}
+function reportStateFromMerge(merge, hadRawCsv, saveError) {
+  const latest = (merge.dates || [])[0] || null;
+  const latestRaw = (merge.rawDates || [])[0] || null;
+  const latestTrend = (merge.timeseriesDates || [])[0] || null;
+  const pendingDates = merge.pendingDates || [];
+  const reconciledDates = merge.reconciledDates || [];
+  let state = "ready";
+  let message = "Daily reports are current.";
+  if (!latest && !latestTrend) {
+    state = "unavailable";
+    message = "No report source data has been pushed yet.";
+  } else if (pendingDates.length) {
+    state = "processing";
+    message = "Daily reports are catching up; some trend dates are not renderable yet.";
+  } else if (reconciledDates.length || (!hadRawCsv && latestTrend)) {
+    state = "reconciled";
+    message = "Daily reports are current using rows recovered from the timeseries feed while raw CSV catch-up completes.";
+  }
+  return {
+    state,
+    message,
+    source: reconciledDates.length || (!hadRawCsv && latestTrend) ? "timeseries-reconciled" : "csv",
+    latestReportDate: latest,
+    latestRawReportDate: latestRaw,
+    latestTrendDate: latestTrend,
+    reconciledDates,
+    pendingDates,
+    rawDates: (merge.rawDates || []).length,
+    trendDates: (merge.timeseriesDates || []).length,
+    saveError: saveError ? String((saveError && saveError.message) || saveError).slice(0, 200) : null,
+  };
+}
+async function loadReportAppDaily(clientId, options = {}) {
+  let rawCsv = "";
+  let hadRawCsv = false;
+  let ts = null;
+  try {
+    rawCsv = await loadCsv(clientId, "AppDaily");
+    hadRawCsv = true;
+  } catch (e) {}
+  try { ts = await loadTimeseries(clientId); } catch (e) {}
+
+  if (!hadRawCsv && !ts) throw new Error("no data pushed yet for " + clientId);
+  const merge = mergeAppDailyWithTimeseries(rawCsv, ts);
+  let saveError = null;
+  if (options.persist && merge.reconciledDates.length) {
+    try {
+      await storage.bucket(BUCKET).file(clientId + "/reconciled/AppDaily.csv").save(merge.text, { contentType: "text/csv", resumable: false });
+    } catch (e) { saveError = e; }
+  }
+  return { appDaily: merge.text, dates: merge.dates, state: reportStateFromMerge(merge, hadRawCsv, saveError) };
+}
+async function deleteFilesByPrefix(prefix) {
+  const [files] = await storage.bucket(BUCKET).getFiles({ prefix });
+  await Promise.all(files.map((f) => f.delete().catch(() => {})));
+}
+async function invalidateReportArtifacts(clientId) {
+  try { await deleteFilesByPrefix(clientId + "/reports/"); } catch (e) {}
+  try { await deleteFilesByPrefix(clientId + "/reconciled/"); } catch (e) {}
+}
 
 exports.xgClientApi = onRequest(
   { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, PUSH_SECRET], region: "us-central1", memory: "512MiB", timeoutSeconds: 120 },
@@ -267,6 +419,7 @@ exports.xgClientApi = onRequest(
         if (validation) { fail(res, 400, validation); return; }
         await storage.bucket(BUCKET).file(clientId + ".json").save(bodyText, { contentType: "application/json", resumable: false });
         delete tsCache[clientId];
+        await invalidateReportArtifacts(clientId);
         noStore(res);
         res.json({ ok: true, bytes });
         return;
@@ -286,11 +439,9 @@ exports.xgClientApi = onRequest(
         const validation = validateCsvPayload(name, bodyText);
         if (validation) { fail(res, 400, validation); return; }
         await storage.bucket(BUCKET).file(clientId + "/" + name + ".csv").save(bodyText, { contentType: "text/csv", resumable: false });
-        // A fresh feed invalidates any cached rendered pages for this client.
-        try {
-          const [files] = await storage.bucket(BUCKET).getFiles({ prefix: clientId + "/reports/" });
-          await Promise.all(files.map((f) => f.delete().catch(() => {})));
-        } catch (e) {}
+        // A fresh feed invalidates cached rendered pages and any prior
+        // timeseries-derived reconciliation for this client.
+        await invalidateReportArtifacts(clientId);
         noStore(res);
         res.json({ ok: true, name, bytes });
         return;
@@ -325,15 +476,9 @@ exports.xgClientApi = onRequest(
         if (!isRead) { fail(res, 405, "GET only"); return; }
         const clientId = readClientId(req, res); if (!clientId) return;
         try {
-          let dates = [];
-          try { dates = datesFromCsv(await loadCsv(clientId, "AppDaily")); } catch (e) {}
-          if (!dates.length) {
-            const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
-            const ts = JSON.parse(buf.toString("utf8"));
-            dates = Array.isArray(ts.dates) ? ts.dates.slice().sort().reverse() : [];
-          }
+          const feed = await loadReportAppDaily(clientId, { persist: true });
           cache(res, CACHE.short);
-          res.set("Content-Type", "application/json").json({ client: clientId, dates });
+          res.set("Content-Type", "application/json").json({ client: clientId, dates: feed.dates, report: feed.state });
         } catch (e) {
           fail(res, 404, "no data pushed yet for " + clientId);
         }
@@ -360,12 +505,14 @@ exports.xgClientApi = onRequest(
           return;
         } catch (e) { /* not cached yet — render below */ }
 
-        // 2) Need the raw AppDaily rows the Apps Script pushed.
+        // 2) Need reportable AppDaily rows, either raw from Apps Script or
+        // reconciled from the already-pushed timeseries feed.
         const inputs = {};
         try {
-          inputs.AppDaily = await loadCsv(clientId, "AppDaily");
+          const feed = await loadReportAppDaily(clientId, { persist: true });
+          inputs.AppDaily = feed.appDaily;
         } catch (e) {
-          fail(res, 404, "no AppDaily.csv pushed for " + clientId + " - run pushTimeseries once after updating the Apps Script");
+          fail(res, 404, "no report source data pushed for " + clientId);
           return;
         }
         for (const name of ["Users", "Country", "Source", "Format", "Privacy"]) {
@@ -532,14 +679,19 @@ if (process.env.NODE_ENV === "test") {
   exports._test = {
     CLIENT_RE,
     CSV_NAMES,
+    compactDate,
     csvCells,
     datesFromCsv,
+    datesFromTimeseries,
     clickUpQueryKeys,
     csvHeader,
     isAllowedAdmobProxy,
     isAllowedClickUpProxy,
+    mergeAppDailyWithTimeseries,
+    reportStateFromMerge,
     restQuery,
     safeEqual,
+    syntheticAppDailyRows,
     validateClickUpWrite,
     validateCsvPayload,
     validateTimeseriesPayload,

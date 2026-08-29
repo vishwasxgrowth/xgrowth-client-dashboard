@@ -760,6 +760,23 @@
     el.reportStatus.textContent = msg || '';
     el.reportStatus.style.display = msg ? 'block' : 'none';
   }
+  function dateLabel(iso) {
+    return iso ? niceDate(iso) : 'the latest day';
+  }
+  function reportNotice(report) {
+    if (!report || !report.state) return '';
+    if (report.state === 'processing') {
+      return 'Daily reports are catching up to ' + dateLabel(report.latestTrendDate) +
+        '. Latest available report is ' + dateLabel(report.latestReportDate || report.latestRawReportDate) + '.';
+    }
+    if (report.state === 'reconciled' && report.reconciledDates && report.reconciledDates.length) {
+      return 'Latest Daily Report is current from the trends feed while raw CSV details catch up.';
+    }
+    if (report.state === 'unavailable') {
+      return 'Daily report source data has not been pushed yet.';
+    }
+    return '';
+  }
   function fitFrame() {
     var f = el.reportFrame;
     try {
@@ -801,7 +818,8 @@
       .then(function (res) { if (!res.ok) throw new Error('no manifest'); return res.json(); })
       .then(function (mf) {
         var dates = Array.isArray(mf.dates) ? mf.dates.slice().sort() : [];
-        if (!dates.length) { setStatus('No reports published yet.'); return; }
+        var notice = reportNotice(mf.report);
+        if (!dates.length) { setStatus(notice || 'No reports published yet.'); return; }
         var max = dates[dates.length - 1];
         el.dateInput.min = dates[0];
         el.dateInput.max = max;
@@ -809,7 +827,7 @@
         el.dateInput.addEventListener('change', function () {
           if (el.dateInput.value) loadReport(el.dateInput.value);
         });
-        return loadReport(max);
+        return loadReport(max).then(function () { if (notice) setStatus(notice); });
       })
       .catch(function () { setStatus('No reports published yet.'); });
   }

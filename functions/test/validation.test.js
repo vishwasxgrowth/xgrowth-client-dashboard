@@ -42,6 +42,48 @@ test("report manifests can derive renderable dates from AppDaily CSV", () => {
   assert.deepEqual(_test.datesFromCsv(csv), ["2026-08-27", "2026-08-26"]);
 });
 
+test("report AppDaily CSV can be reconciled from a newer timeseries feed", () => {
+  const csv = [
+    "DATE,APP,ESTIMATED_EARNINGS,IMPRESSIONS,AD_REQUESTS,MATCHED_REQUESTS",
+    '20260827,"A, quoted app",1.25,100,120,110',
+  ].join("\n");
+  const ts = {
+    dates: ["2026-08-27", "2026-08-28"],
+    apps: {
+      "A, quoted app": { revenue: [1.25, 2.5], impressions: [100, 200], requests: [120, 240], matched: [110, 220] },
+      "Zero App": { revenue: [0, 0], impressions: [0, 0], requests: [0, 0], matched: [0, 0] },
+    },
+  };
+  const merged = _test.mergeAppDailyWithTimeseries(csv, ts);
+  assert.deepEqual(merged.rawDates, ["2026-08-27"]);
+  assert.deepEqual(merged.reconciledDates, ["2026-08-28"]);
+  assert.deepEqual(merged.pendingDates, []);
+  assert.deepEqual(merged.dates, ["2026-08-28", "2026-08-27"]);
+  assert.match(merged.text, /20260828,"A, quoted app",2.5,200,240,220/);
+  assert.match(merged.text, /20260828,Zero App,0,0,0,0/);
+
+  const state = _test.reportStateFromMerge(merged, true, null);
+  assert.equal(state.state, "reconciled");
+  assert.equal(state.latestTrendDate, "2026-08-28");
+  assert.equal(state.latestReportDate, "2026-08-28");
+  assert.equal(state.latestRawReportDate, "2026-08-27");
+
+  const second = _test.mergeAppDailyWithTimeseries(merged.text, ts);
+  assert.deepEqual(second.reconciledDates, []);
+  assert.deepEqual(second.dates, ["2026-08-28", "2026-08-27"]);
+});
+
+test("report reconciliation exposes processing state when timeseries has no usable app rows", () => {
+  const merged = _test.mergeAppDailyWithTimeseries("DATE,APP,ESTIMATED_EARNINGS\n20260827,App,1", {
+    dates: ["2026-08-27", "2026-08-28", "bad-date"],
+    apps: { App: { revenue: [1, null], impressions: [10, null], requests: [20, null], matched: [15, null] } },
+  });
+  assert.deepEqual(_test.datesFromTimeseries({ dates: ["bad", "2026-08-28"] }), ["2026-08-28"]);
+  assert.deepEqual(merged.reconciledDates, []);
+  assert.deepEqual(merged.pendingDates, ["2026-08-28"]);
+  assert.equal(_test.reportStateFromMerge(merged, true, null).state, "processing");
+});
+
 test("AdMob proxy exposes only mediation report generation", () => {
   assert.equal(_test.isAllowedAdmobProxy("/admob/v1alpha/accounts/pub-123/mediationReport:generate", "POST"), true);
   assert.equal(_test.isAllowedAdmobProxy("/admob/v1alpha/accounts/pub-123/mediationReport:generate", "GET"), false);

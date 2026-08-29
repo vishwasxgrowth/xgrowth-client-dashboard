@@ -66,6 +66,10 @@ installDailyTrigger()
 The script pushes the timeseries JSON plus `AppDaily`, `Users`, `Country`,
 `Source`, `Format`, and `Privacy` CSVs when those tabs exist. The backend still
 accepts the existing query-string key transport and also accepts `X-Push-Key`.
+`AppDaily.csv` failures are no longer silent: the script still pushes the JSON
+feed so Trends stay current, but the scheduled run fails visibly in Apps Script
+logs. The backend reconciles missing AppDaily report rows from the timeseries
+feed and reports that state from `/report-manifest`.
 
 ## 5. Deploy
 
