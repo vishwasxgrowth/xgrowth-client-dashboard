@@ -1,0 +1,14 @@
+{
+  "projects": {
+    "default": "dolphin-fdffc"
+  },
+  "targets": {
+    "dolphin-fdffc": {
+      "hosting": {
+        "production": [
+          "dolphin-fdffc"
+        ]
+      }
+    }
+  }
+}
