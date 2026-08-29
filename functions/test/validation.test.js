@@ -31,6 +31,17 @@ test("csv pushes are limited to known report tabs with required headers", () => 
   assert.equal(_test.validateCsvPayload("Unknown", "DATE,APP\n"), "unsupported csv name");
 });
 
+test("report manifests can derive renderable dates from AppDaily CSV", () => {
+  const csv = [
+    '"APP",DATE,ESTIMATED_EARNINGS',
+    '"A, quoted app",20260827,1.00',
+    'Other,2026-08-26,2.00',
+    'Bad,not-a-date,3.00',
+  ].join("\n");
+  assert.deepEqual(_test.csvCells('"A, quoted app",20260827,1.00'), ["A, quoted app", "20260827", "1.00"]);
+  assert.deepEqual(_test.datesFromCsv(csv), ["2026-08-27", "2026-08-26"]);
+});
+
 test("AdMob proxy exposes only mediation report generation", () => {
   assert.equal(_test.isAllowedAdmobProxy("/admob/v1alpha/accounts/pub-123/mediationReport:generate", "POST"), true);
   assert.equal(_test.isAllowedAdmobProxy("/admob/v1alpha/accounts/pub-123/mediationReport:generate", "GET"), false);

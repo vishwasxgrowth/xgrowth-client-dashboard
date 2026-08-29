@@ -126,7 +126,22 @@ function validateTimeseriesPayload(text, clientId) {
 }
 function csvHeader(text) {
   const first = String(text || "").split(/\r?\n/, 1)[0] || "";
-  return first.split(",").map((h) => h.trim().replace(/^"|"$/g, "").toUpperCase());
+  return csvCells(first).map((h) => h.trim().replace(/^"|"$/g, "").toUpperCase());
+}
+function csvCells(line) {
+  const cells = [];
+  let cur = "";
+  let quoted = false;
+  const s = String(line || "");
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '"' && quoted && s[i + 1] === '"') { cur += '"'; i++; }
+    else if (ch === '"') quoted = !quoted;
+    else if (ch === "," && !quoted) { cells.push(cur); cur = ""; }
+    else cur += ch;
+  }
+  cells.push(cur);
+  return cells;
 }
 function validateCsvPayload(name, text) {
   if (!CSV_NAMES.has(name)) return "unsupported csv name";
@@ -164,6 +179,23 @@ function validateClickUpWrite(req) {
 }
 function validAccountName(account) {
   return /^accounts\/pub-\d+$/.test(String(account || ""));
+}
+function normalizeCsvDate(v) {
+  const s = String(v || "").trim().replace(/-/g, "");
+  return /^\d{8}$/.test(s) ? s.slice(0, 4) + "-" + s.slice(4, 6) + "-" + s.slice(6, 8) : null;
+}
+function datesFromCsv(text) {
+  const lines = String(text || "").split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const header = csvHeader(lines[0]);
+  const dateIdx = header.indexOf("DATE");
+  if (dateIdx < 0) return [];
+  const dates = new Set();
+  for (const line of lines.slice(1)) {
+    const date = normalizeCsvDate(csvCells(line)[dateIdx]);
+    if (date) dates.add(date);
+  }
+  return [...dates].sort().reverse();
 }
 async function loadCsv(clientId, name) {
   const [buf] = await storage.bucket(BUCKET).file(clientId + "/" + name + ".csv").download();
@@ -286,15 +318,20 @@ exports.xgClientApi = onRequest(
       }
 
       // ---- Daily report: list of available dates (manifest) ----
-      // The manifest is just the timeseries' own date axis — no separate file to
-      // maintain. Newest first, so the UI's date picker defaults to the latest.
+      // Prefer AppDaily.csv dates because /report-day renders from that raw feed.
+      // If the JSON timeseries gets ahead by a day, exposing only renderable dates
+      // keeps the Daily tab from defaulting to a known 500.
       if (path === "/report-manifest") {
         if (!isRead) { fail(res, 405, "GET only"); return; }
         const clientId = readClientId(req, res); if (!clientId) return;
         try {
-          const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
-          const ts = JSON.parse(buf.toString("utf8"));
-          const dates = Array.isArray(ts.dates) ? ts.dates.slice().sort().reverse() : [];
+          let dates = [];
+          try { dates = datesFromCsv(await loadCsv(clientId, "AppDaily")); } catch (e) {}
+          if (!dates.length) {
+            const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
+            const ts = JSON.parse(buf.toString("utf8"));
+            dates = Array.isArray(ts.dates) ? ts.dates.slice().sort().reverse() : [];
+          }
           cache(res, CACHE.short);
           res.set("Content-Type", "application/json").json({ client: clientId, dates });
         } catch (e) {
@@ -495,6 +532,8 @@ if (process.env.NODE_ENV === "test") {
   exports._test = {
     CLIENT_RE,
     CSV_NAMES,
+    csvCells,
+    datesFromCsv,
     clickUpQueryKeys,
     csvHeader,
     isAllowedAdmobProxy,
