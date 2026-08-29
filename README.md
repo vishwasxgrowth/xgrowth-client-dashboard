@@ -1,32 +1,53 @@
 # Xgrowth Client Dashboard
 
-Standalone, client-facing dashboard. No dolphin code — its own auth (Google
-Identity Services), its own AdMob + ClickUp data layer, and the Xgrowth Ops UI.
-One client per deployment (config via env).
+Standalone, client-facing dashboard for one client deployment. The app is a
+Vite/React frontend backed by a Firebase Function. In production, the dashboard
+loads the cached monetization timeseries that Apps Script pushes from the
+client feed sheet; ClickUp loads on demand when workspace views need it.
 
 ## Run locally
 ```
 npm install
-cp .env.example .env   # fill the 5 values
+cp .env.example .env
 npm run dev
 ```
 
-## Env (per client)
-- `VITE_GOOGLE_CLIENT_ID` — External OAuth web client id (clients sign in with their own Google)
-- `VITE_FUNCTIONS_BASE_URL` — deployed ClickUp proxy base URL
-- `VITE_CLIENT_NAME` — shown on the login + brand
-- `VITE_CLIENT_ADMOB_ACCOUNT` — e.g. accounts/pub-XXXXXXXXXXXXXXXX
-- `VITE_CLIENT_CLICKUP_FOLDER` — the client's ClickUp folder id
+## Validate
+```
+npm run typecheck
+npm run build
+npm --prefix functions test
+npm test
+```
 
-## Build & deploy
+## Env (per client)
+- `VITE_FUNCTIONS_BASE_URL` - deployed `xgClientApi` function URL.
+- `VITE_CLIENT_ID` - short storage/client key, for example `jedyapps`.
+- `VITE_CLIENT_NAME` - shown in the dashboard shell.
+- `VITE_CLIENT_ADMOB_ACCOUNT` - for example `accounts/pub-XXXXXXXXXXXXXXXX`.
+- `VITE_CLIENT_CLICKUP_FOLDER` - the client's ClickUp folder id.
+- `VITE_GOOGLE_CLIENT_ID` - only needed for browser-direct AdMob dev mode.
+- `VITE_DEV_ACCESS_TOKEN` - optional local-only AdMob token. Leave unset in production.
+
+## Build
 ```
-npm run build      # -> dist/
+npm run build
 ```
-Deploy `dist/` to any static host (Firebase Hosting, Netlify, Vercel, Cloud Run+nginx)
-on the client's own domain.
+
+Deploy `dist/` to the selected static host only after the backend URL and
+allowed origins are configured.
 
 ## Notes
-- AdMob is called browser-direct with the signed-in user's token (they own the account).
-- ClickUp goes through the proxy (token stays server-side).
-- ARPDAU/DAU need a GA4/Firebase source (AdMob has no DAU) — currently 0.
-- Experiments use the bundled snapshot until a live source is wired.
+- Apps Script pushes `timeseries.json` plus raw CSV tabs (`AppDaily`, `Users`,
+  `Country`, `Source`, `Format`, `Privacy`) into Google Cloud Storage through
+  `/timeseries-push` and `/csv-push`.
+- The dashboard's default production data path reads `/timeseries`, avoiding
+  startup AdMob and ClickUp API calls.
+- ClickUp task lists, task details, comments, and status updates still go
+  through the backend proxy, but task-list loading is deferred until Tasks,
+  Tests, or Settings is opened.
+- If the cached monetization feed cannot load, the UI shows an explicit error
+  state before using bundled demo data. Local task edits are labeled as local
+  when ClickUp creation/status sync is not connected.
+- Daily report routes (`/report-manifest`, `/report-day`) render from the CSVs
+  pushed by Apps Script and cache generated HTML in the bucket.

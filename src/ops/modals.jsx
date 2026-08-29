@@ -4,6 +4,8 @@ import D from "../activeData";
 import { parseArms, armMetrics } from "../testConfig";
 import { C, LISTS, PRIORITIES, STATUSES, card, Empty, groupId, money, compact, pct, shortDate } from "./theme";
 
+const errText = (e) => String((e && e.message) || e || "Unknown error");
+
 function cfValue(f) {
   const v = f.value; if (v == null || v === "") return null;
   const tc = f.type_config || {};
@@ -34,7 +36,13 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
   }, [ot && ot.id]);
   if (!ot) return null;
   const doneReal = groupId(ot.status) === "done";
-  const setStatus = (v) => { patchTask(ot.id, { status: v }); if (D.updateTaskStatus) D.updateTaskStatus(ot.id, v).then(() => flash("Updated in ClickUp")).catch(() => flash("Could not update ClickUp")); };
+  const setStatus = (v) => {
+    patchTask(ot.id, { status: v });
+    if (!D.updateTaskStatus) { flash("Updated locally; ClickUp update is not connected"); return; }
+    D.updateTaskStatus(ot.id, v)
+      .then(() => flash("Updated in ClickUp"))
+      .catch((e) => flash("Updated locally; ClickUp update failed: " + errText(e)));
+  };
   const d = detail || {};
   const descText = d.markdown_description || d.description || ot.desc || "";
   const codey = /[{}\[\]]|table-embed|waterfalls|"ad_|"name":/.test(descText);

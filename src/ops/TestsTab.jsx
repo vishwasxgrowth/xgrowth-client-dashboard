@@ -2,7 +2,9 @@
 import D from "../activeData";
 import { C, card, Empty, member, groupId, shortDate } from "./theme";
 
-export default function TestsTab({ tasks, q, tfilter, setTfilter, openTask }) {
+export default function TestsTab({ tasks, q, tfilter, setTfilter, openTask, taskLoadState }) {
+  if (taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp experiments...</Empty>;
+  if (taskLoadState === "error" && !tasks.length) return <Empty>ClickUp experiments are unavailable.</Empty>;
   const tests = tasks.filter((t) => /test|experiment/i.test(t.list));
   const counts = { All: tests.length };
   tests.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });

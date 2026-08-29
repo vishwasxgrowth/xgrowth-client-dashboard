@@ -50,7 +50,7 @@ function GroupedTaskList({ items, taskView, statuses }) {
 // scopeApp + taskAppMap: used to embed this same tab (filters, statuses, list
 // view / board view, everything) inside a single app's detail page, scoped
 // to just the tasks matched to that app.
-export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, taskAppMap }) {
+export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, taskAppMap, taskLoadState }) {
   const [tview, setTview] = useState("list");
   const [tlist, setTlist] = useState("All lists");
   const [tassignee, setTassignee] = useState("All assignees");
@@ -92,6 +92,8 @@ export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, 
   const drop = (k) => { if (dragId && useReal) onMove(dragId, k); setDragId(null); setOverCol(null); };
   const chip = (on, color, bg) => ({ border: "1px solid " + (on ? color : C.line), background: on ? bg : "#fff", color: on ? color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20, display: "inline-flex", alignItems: "center" });
 
+  if (!scopeApp && taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp tasks...</Empty>;
+  if (!scopeApp && taskLoadState === "error" && !tasks.length) return <Empty>ClickUp tasks are unavailable.</Empty>;
   if (scopeApp && !tasks.length) return <Empty>No tasks matched to this app.</Empty>;
   return (
     <>

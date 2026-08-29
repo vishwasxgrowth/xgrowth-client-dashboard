@@ -28,9 +28,9 @@ export default function ReportsDashboard() {
 
     root.innerHTML = MARKUP;
     const patched = APP_JS
-      .replace("fetch('data/timeseries.json', { cache: 'no-store' })", "fetch(window.__RPT_TS, { cache: 'no-store' })")
-      .replace("fetch('data/' + date + '.html', { cache: 'no-store' })", "fetch(window.__RPT_DAY(date), { cache: 'no-store' })")
-      .replace("fetch('data/manifest.json', { cache: 'no-store' })", "fetch(window.__RPT_MANIFEST, { cache: 'no-store' })");
+      .replace("fetch('data/timeseries.json', { cache: 'no-store' })", "fetch(window.__RPT_TS)")
+      .replace("fetch('data/' + date + '.html', { cache: 'no-store' })", "fetch(window.__RPT_DAY(date))")
+      .replace("fetch('data/manifest.json', { cache: 'no-store' })", "fetch(window.__RPT_MANIFEST)");
     try {
       // eslint-disable-next-line no-new-func
       new Function(patched)();

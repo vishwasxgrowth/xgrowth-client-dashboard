@@ -5,6 +5,10 @@
     "node": "20"
   },
   "main": "index.js",
+  "scripts": {
+    "check": "node --check index.js && node --check engine/digest.mjs && node --check engine/render-html.mjs",
+    "test": "npm run check && node --test test/*.test.js"
+  },
   "dependencies": {
     "firebase-functions": "^5.0.0",
     "@google-cloud/storage": "^7.7.0"

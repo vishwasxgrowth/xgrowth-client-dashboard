@@ -5,6 +5,7 @@ import * as demo from "./data";
 
 let current: any = demo;
 export function setDataSource(d: any) { current = d; }
+export function updateDataSource(patch: any) { current = { ...current, ...patch }; }
 export function resetDataSource() { current = demo; }
 const D: any = new Proxy({}, { get: (_t, prop) => current[prop] });
 export default D;

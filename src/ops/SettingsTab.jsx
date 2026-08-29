@@ -2,21 +2,34 @@
 import D from "../activeData";
 import { C, TIERS, card, Pill, groupId, since } from "./theme";
 
-export default function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSaved }) {
-  const clickupFailed = D.IS_LIVE && D.TASKS_SOURCE !== "clickup";
-  const connections = [
-    clickupFailed
-      ? { mark: "C", color: "#7B68EE", name: "ClickUp", detail: "Could not load tasks from ClickUp — showing " + tasks.length + " demo tasks instead. Check the CLICKUP_TOKEN secret and folder id, then see the browser console for the fetch error.", status: "Action needed", sfg: "#B45309", sbg: "#FEF3C7" }
-      : { mark: "C", color: "#7B68EE", name: "ClickUp", detail: "Space JedyApps · folder 901210858217 · " + tasks.length + " tasks synced", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
-    { mark: "A", color: "#EA4335", name: "Google AdMob", detail: "pub-9924… · mediation report API · 12 apps", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
-    { mark: "F", color: "#0E9F6E", name: "Firebase", detail: "Remote Config experiments · read-only", status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" },
+const FOLDER_ID = import.meta.env.VITE_CLIENT_CLICKUP_FOLDER || "";
+
+const badgeFor = (status) => {
+  if (status === "connected") return { status: "Connected", sfg: "#0B7A55", sbg: "#E6F6F0" };
+  if (status === "loading" || status === "idle") return { status: "On demand", sfg: "#5B6172", sbg: "#F1F2F6" };
+  if (status === "warning") return { status: "Limited", sfg: "#B45309", sbg: "#FEF3C7" };
+  if (status === "unavailable" || status === "error") return { status: "Action needed", sfg: "#B45309", sbg: "#FEF3C7" };
+  return { status: "Unknown", sfg: "#5B6172", sbg: "#F1F2F6" };
+};
+
+export default function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSaved, connections, taskLoadState, taskError, loadClickUp }) {
+  const monetization = connections && connections.monetization ? connections.monetization : { status: D.SOURCE_ERROR ? "error" : "connected", detail: D.SOURCE_ERROR || "Monetization source loaded" };
+  const clickup = connections && connections.clickup ? connections.clickup : { status: taskLoadState === "ready" ? "connected" : taskLoadState || "idle", detail: taskError || "ClickUp task snapshot loads on demand" };
+  const mb = badgeFor(monetization.status);
+  const cb = badgeFor(clickup.status);
+  const folderLabel = FOLDER_ID ? "Folder " + FOLDER_ID : "Configured folder";
+  const connectionRows = [
+    { mark: "M", color: "#EA4335", name: "Monetization feed", detail: monetization.detail + " · " + D.APPS.length + " apps", ...mb },
+    { mark: "C", color: "#7B68EE", name: "ClickUp", detail: clickup.status === "connected" ? folderLabel + " · " + tasks.length + " tasks synced" : clickup.detail, ...cb },
+    { mark: "F", color: "#0E9F6E", name: "Firebase", detail: "Backend proxy and cached report feed", status: "Configured", sfg: "#0B7A55", sbg: "#E6F6F0" },
     { mark: "M", color: "#1877F2", name: "Meta Audience Network", detail: "Placement mapping incomplete for 6 apps", status: "Action needed", sfg: "#B45309", sbg: "#FEF3C7" },
   ];
   const members = D.MEMBERS.map((m) => ({ ...m, open: tasks.filter((t) => t.assignee === m.name && groupId(t.status) !== "done").length, role: m.name === "Vishwas HD" ? "Ad Ops Lead" : m.name === "Nadiya Hassan" ? "Ad Ops" : m.name === "Igor Aliev" ? "SDK / Dev" : "Product" }));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
       <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Connections</div>
-        {connections.map((c) => <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F1F2F6" }}><div style={{ width: 34, height: 34, borderRadius: 9, background: c.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{c.mark}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{c.detail}</div></div><Pill fg={c.sfg} bg={c.sbg}>{c.status}</Pill></div>)}
+        {connectionRows.map((c) => <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F1F2F6" }}><div style={{ width: 34, height: 34, borderRadius: 9, background: c.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{c.mark}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{c.detail}</div></div><Pill fg={c.sfg} bg={c.sbg}>{c.status}</Pill></div>)}
+        {clickup.status !== "connected" && D.loadClickUpTasks && <div style={{ padding: "12px 16px" }}><button onClick={loadClickUp} disabled={taskLoadState === "loading"} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid " + C.line, background: "#fff", color: C.sub, cursor: taskLoadState === "loading" ? "default" : "pointer", fontSize: 12.5, fontWeight: 700 }}>{taskLoadState === "loading" ? "Loading..." : "Load ClickUp now"}</button></div>}
       </div>
       <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Team</div>
         {members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #F1F2F6" }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{m.role}</div></div><span style={{ fontSize: 12, color: C.sub, fontVariantNumeric: "tabular-nums" }}>{m.open} open</span></div>)}

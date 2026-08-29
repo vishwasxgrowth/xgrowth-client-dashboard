@@ -14,7 +14,7 @@ function tsUrl() {
 let inflight = null; // shared across every caller in this tab session
 export function loadTimeseries() {
   if (!inflight) {
-    inflight = fetch(tsUrl(), { cache: "no-store" })
+    inflight = fetch(tsUrl())
       .then((r) => { if (!r.ok) throw new Error("timeseries.json " + r.status); return r.json(); })
       .catch((e) => { inflight = null; throw e; });
   }

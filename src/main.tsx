@@ -3,8 +3,9 @@ import { useContext, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { AuthContext, AuthProvider } from "./auth";
-import { setDataSource, resetDataSource } from "./activeData";
-import { buildLiveSource } from "./liveSource";
+import { setDataSource } from "./activeData";
+import * as demo from "./data";
+import { buildCachedSource, buildLiveSource } from "./liveSource";
 import XgrowthOps from "./XgrowthOps";
 
 const NAME = import.meta.env.VITE_CLIENT_NAME || "Your Dashboard";
@@ -41,8 +42,25 @@ function Shell() {
     if (!isSignedIn) return;
     if (!PROXY && !token) return; // token only required when calling AdMob directly
     let live = true;
-    buildLiveSource(ACCOUNT, FOLDER, token).then((src) => { if (live) { setDataSource(src); setReady(true); } })
-      .catch(() => { if (live) { resetDataSource(); setReady(true); } });
+    const source = PROXY && !DEV_TOKEN ? buildCachedSource(ACCOUNT, FOLDER) : buildLiveSource(ACCOUNT, FOLDER, token);
+    source.then((src) => { if (live) { setDataSource(src); setReady(true); } })
+      .catch((e) => {
+        if (!live) return;
+        const message = String((e && e.message) || e || "Unknown data-source error");
+        setDataSource({
+          ...demo,
+          IS_LIVE: false,
+          SOURCE_MODE: "demo-fallback",
+          SOURCE_ERROR: message,
+          TASKS_SOURCE: "demo-fallback",
+          TASKS_ERROR: message,
+          CONNECTIONS: {
+            monetization: { status: "error", detail: "Using bundled demo data: " + message },
+            clickup: { status: "unavailable", detail: "ClickUp was not loaded because the primary data source failed" },
+          },
+        });
+        setReady(true);
+      });
     return () => { live = false; };
   }, [isSignedIn, token]);  // proxy mode fetches with empty token
   if (isLoading) return <Center>…</Center>;

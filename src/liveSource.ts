@@ -2,10 +2,144 @@
 import * as demo from "./data";
 import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
 import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus, getWorkspaceMembers } from "./clickup";
+import { loadTimeseries } from "./timeseriesSource";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
 const fmtDate = (v) => (v && v.length === 8 ? v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6, 8) : v);
 const rd = (d) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() });
+const MS = 86400000;
+
+const tierForRevenue = (rev30) => rev30 >= 15000 ? "Tier 1" : rev30 >= 3000 ? "Tier 2" : rev30 >= 500 ? "Tier 3" : "Tier 4";
+const sourceError = (e) => String((e && e.message) || e || "Unknown error");
+
+function latestNextDay(ts) {
+  const latest = ts && ts.dates && ts.dates[ts.dates.length - 1];
+  if (!latest) return demo.TODAY;
+  return new Date(new Date(latest + "T00:00:00Z").getTime() + MS).toISOString().slice(0, 10);
+}
+
+function readSeries(ts, appName) {
+  return appName ? ts.apps && ts.apps[appName] : ts.portfolio;
+}
+
+function rowFromTimeseries(ts, appName, dateStr) {
+  const i = ts.dates.indexOf(dateStr);
+  const s = readSeries(ts, appName);
+  const revenue = i >= 0 && s && s.revenue ? s.revenue[i] : null;
+  const impressions = i >= 0 && s && s.impressions ? s.impressions[i] : null;
+  const requests = i >= 0 && s && s.requests ? s.requests[i] : null;
+  const matched = i >= 0 && s && s.matched ? s.matched[i] : null;
+  const dau = i >= 0 && s && s.dau ? s.dau[i] : null;
+  const dav = i >= 0 && s && s.dav ? s.dav[i] : null;
+  return {
+    date: dateStr,
+    revenue: revenue || 0,
+    impressions: impressions || 0,
+    requests: requests || 0,
+    matched: matched || 0,
+    clicks: 0,
+    dau: dau || 0,
+    dav: dav || 0,
+    ecpm: impressions ? ((revenue || 0) / impressions) * 1000 : 0,
+    matchRate: requests ? (matched || 0) / requests : 0,
+    ctr: 0,
+    showRate: matched ? (impressions || 0) / matched : 0,
+  };
+}
+
+function aggregateTimeseries(ts, appName, dates) {
+  let revenue = 0, impressions = 0, requests = 0, matched = 0, dau = 0, dav = 0, dauN = 0, davN = 0;
+  const series = dates.map((ds) => {
+    const r = rowFromTimeseries(ts, appName, ds);
+    revenue += r.revenue; impressions += r.impressions; requests += r.requests; matched += r.matched;
+    if (r.dau) { dau += r.dau; dauN++; }
+    if (r.dav) { dav += r.dav; davN++; }
+    return r;
+  });
+  return {
+    series, revenue, impressions, requests, matched, clicks: 0,
+    dau: dauN ? dau / dauN : 0,
+    dav: davN ? dav / davN : 0,
+    ecpm: impressions ? (revenue / impressions) * 1000 : 0,
+    arpdau: dau ? revenue / dau : 0,
+    arpdav: dav ? revenue / dav : 0,
+    matchRate: requests ? matched / requests : 0,
+    ctr: 0,
+    showRate: matched ? impressions / matched : 0,
+  };
+}
+
+function appsFromTimeseries(ts) {
+  const names = Object.keys((ts && ts.apps) || {}).sort();
+  const n = ts.dates ? ts.dates.length : 0;
+  const a = Math.max(0, n - 30), b = Math.max(a, n - 1);
+  return names.map((name) => {
+    const agg = n ? aggregateTimeseries(ts, name, ts.dates.slice(a, b + 1)) : { revenue: 0, dau: 0, ecpm: 0, matchRate: 0 };
+    return {
+      id: name,
+      name,
+      cat: "App",
+      tier: tierForRevenue(agg.revenue),
+      store: "Google Play",
+      dau: Math.round(agg.dau || 0),
+      ecpm: agg.ecpm || 0,
+      mr: agg.matchRate || 0,
+    };
+  });
+}
+
+async function loadClickUpWorkspace(folderId) {
+  const { listsMeta, tasks } = await getFolderData(folderId);
+  let members = demo.MEMBERS;
+  let membersError = null;
+  try {
+    const real = await getWorkspaceMembers();
+    if (real.length) members = real;
+  } catch (e) {
+    membersError = sourceError(e);
+  }
+  return { tasks, listsMeta, members, membersError };
+}
+
+export async function buildCachedSource(accountName, folderId) {
+  const ts = await loadTimeseries();
+  const TODAY = latestNextDay(ts);
+  const rangeDates = (days, endOffset = 1) => {
+    const end = demo.parseDay(TODAY).getTime() - endOffset * MS;
+    const out = [];
+    for (let i = days - 1; i >= 0; i--) out.push(demo.dayKey(new Date(end - i * MS)));
+    return out;
+  };
+  return {
+    IS_LIVE: true,
+    SOURCE_MODE: "cached-timeseries",
+    SOURCE_ERROR: null,
+    CONNECTIONS: {
+      monetization: { status: "connected", detail: "Cached timeseries feed loaded" },
+      clickup: { status: "idle", detail: "ClickUp loads when a workspace view needs it" },
+    },
+    TODAY,
+    MEMBERS: demo.MEMBERS,
+    APPS: appsFromTimeseries(ts),
+    dayKey: demo.dayKey,
+    parseDay: demo.parseDay,
+    rangeDates,
+    dayRow: (app, ds) => rowFromTimeseries(ts, app && (app.id || app.name), ds),
+    aggregate: (app, dates) => aggregateTimeseries(ts, app && (app.id || app.name), dates),
+    TASKS: [],
+    TASKS_SOURCE: "not-loaded",
+    TASKS_ERROR: null,
+    EXPERIMENTS: demo.EXPERIMENTS,
+    experimentResults: demo.experimentResults,
+    LISTS_META: null,
+    loadClickUpTasks: () => loadClickUpWorkspace(folderId),
+    getTaskDetail,
+    getTaskComments,
+    updateTaskStatus,
+    ACCOUNT: accountName,
+    adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed),
+  };
+}
 
 export async function buildLiveSource(accountName, folderId, token, windowDays = 95) {
   const end = new Date(); end.setUTCDate(end.getUTCDate() - 1);
@@ -59,11 +193,22 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
   // who isn't even in this workspace, so anyone else assigned in ClickUp fell
   // back to a generic gray avatar regardless of who they actually are.
   let MEMBERS = demo.MEMBERS;
+  let MEMBERS_ERROR = null;
   try {
     const real = await getWorkspaceMembers();
     if (real.length) MEMBERS = real;
   } catch (e) {
+    MEMBERS_ERROR = sourceError(e);
     console.warn("[clickup] could not load workspace members, using the demo roster:", e);
   }
-  return { IS_LIVE: true, TODAY, MEMBERS, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed) };
+  return {
+    IS_LIVE: true,
+    SOURCE_MODE: "live-admob",
+    SOURCE_ERROR: null,
+    CONNECTIONS: {
+      monetization: { status: "connected", detail: "Live AdMob mediation report loaded" },
+      clickup: { status: TASKS_SOURCE === "clickup" ? "connected" : "error", detail: TASKS_SOURCE === "clickup" ? "ClickUp task snapshot loaded" : "Using demo tasks because ClickUp failed" },
+    },
+    TODAY, MEMBERS, MEMBERS_ERROR, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed)
+  };
 }
