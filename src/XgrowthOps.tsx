@@ -22,16 +22,15 @@ const THEME_KEY = "xgrowth-theme.v1";
 
 const NAV = [
   { id: "dashboard", label: "Dashboard" },
-  { id: "trends", label: "Trends" },
-  { id: "daily", label: "Daily Reports" },
   { id: "apps", label: "Applications" },
   { id: "tests", label: "Tests & Experiments" },
   { id: "tasks", label: "Tasks" },
   { id: "settings", label: "Settings" },
 ];
-const NAV_GROUPS = [
-  { id: "reports", items: NAV.slice(0, 3) },
-  { id: "workspace", items: NAV.slice(3) },
+const DASHBOARD_TABS = [
+  { id: "overview", label: "Dashboard" },
+  { id: "trends", label: "Trends" },
+  { id: "daily", label: "Daily Reports" },
 ];
 
 function readInitialTheme() {
@@ -155,10 +154,27 @@ function AppMultiSelect({ apps, value, onChange }) {
   );
 }
 
+function DashboardTabBar({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 4, marginBottom: 16, background: C.panel, border: "1px solid " + C.line, borderRadius: 8, padding: 4, width: "fit-content", maxWidth: "100%", overflowX: "auto" }}>
+      {DASHBOARD_TABS.map((tab) => {
+        const on = value === tab.id;
+        return (
+          <button key={tab.id} onClick={() => onChange(tab.id)}
+            style={{ border: "1px solid " + (on ? C.lineStrong : "transparent"), background: on ? C.surface : "transparent", color: on ? C.accentDk : C.sub, borderRadius: 6, padding: "7px 14px", fontSize: 13, fontWeight: on ? 760 : 620, cursor: "pointer", whiteSpace: "nowrap" }}>
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function XgrowthOps() {
   const [savedWorkspace] = useState(() => readSavedWorkspace());
   const [theme, setTheme] = useState(() => readInitialTheme());
   const [page, setPage] = useState("dashboard");
+  const [dashboardView, setDashboardView] = useState("overview");
   const [collapsed, setCollapsed] = useState(() => {
     try { return window.matchMedia && window.matchMedia("(max-width: 820px)").matches; } catch (e) { return false; }
   });
@@ -276,18 +292,16 @@ export default function XgrowthOps() {
         <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
         </button>
-        {NAV_GROUPS.map((navGroup) => (
-          <div key={navGroup.id} style={{ border: navGroup.id === "reports" ? "1px solid " + C.line : "1px solid transparent", background: navGroup.id === "reports" ? C.panel : "transparent", borderRadius: 8, padding: navGroup.id === "reports" ? 4 : 0, marginBottom: navGroup.id === "reports" ? 12 : 2 }}>
-            {navGroup.items.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
-              <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
-                style={{ position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 7, border: on ? "1px solid " + C.line : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 680 : 520, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
-                <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
-                {!collapsed && <span>{n.label}</span>}
-                {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: C.dangerBg, color: C.danger }}>{overdueAll.length}</span></>}
-                {collapsed && badge && <span style={{ position: "absolute", top: 6, right: 9, width: 7, height: 7, borderRadius: "50%", background: C.danger }} />}
-              </button>); })}
-          </div>
-        ))}
+        <div style={{ marginBottom: 12 }}>
+          {NAV.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
+            <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
+              style={{ position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 7, border: on ? "1px solid " + C.line : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 680 : 520, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
+              <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
+              {!collapsed && <span>{n.label}</span>}
+              {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: C.dangerBg, color: C.danger }}>{overdueAll.length}</span></>}
+              {collapsed && badge && <span style={{ position: "absolute", top: 6, right: 9, width: 7, height: 7, borderRadius: "50%", background: C.danger }} />}
+            </button>); })}
+        </div>
         <div style={{ flex: 1 }} />
         {!collapsed && <div style={{ fontSize: 10.5, color: C.faint2, padding: "8px 10px", whiteSpace: "nowrap" }}>{clickupLabel}</div>}
       </div>
@@ -303,9 +317,14 @@ export default function XgrowthOps() {
 
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           <StatusNotice sourceError={D.SOURCE_ERROR} taskLoadState={taskLoadState} taskError={taskError} page={page} onRetry={loadClickUp} />
-          {page === "dashboard" && <OverviewTab {...{ ts, tsError, tasks, taskAppMap, taskLoadState, taskError, setPage, setAppId, setAppTab, setOpenTask, openCreate }} />}
-          {page === "trends" && <ReportsDashboard mode="trends" />}
-          {page === "daily" && <ReportsDashboard mode="daily" />}
+          {page === "dashboard" && (
+            <>
+              <DashboardTabBar value={dashboardView} onChange={setDashboardView} />
+              {dashboardView === "overview" && <OverviewTab {...{ ts, tsError, tasks, taskAppMap, taskLoadState, taskError, setPage, setAppId, setAppTab, setOpenTask, openCreate }} />}
+              {dashboardView === "trends" && <ReportsDashboard mode="trends" />}
+              {dashboardView === "daily" && <ReportsDashboard mode="daily" />}
+            </>
+          )}
           {page === "apps" && <AppsTab {...{ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }} />}
           {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId, taskLoadState }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, onMove: (id, statusName) => syncStatus(id, statusName, "Moved to " + statusName), taskLoadState }} />}

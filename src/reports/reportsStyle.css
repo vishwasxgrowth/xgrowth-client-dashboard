@@ -29,9 +29,9 @@ body {
 .shell-header {
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--chrome-border);
+  gap: 12px;
+  padding: 0 0 14px;
+  border-bottom: 0;
   background: transparent;
   flex-wrap: wrap;
 }
@@ -43,6 +43,7 @@ body {
   color: var(--accent, var(--page-fg));
 }
 .shell-tabs { display: flex; gap: 2px; margin-right: auto; }
+.shell-title, .shell-tabs { display: none; }
 .tab {
   appearance: none;
   border: 0;
@@ -67,7 +68,7 @@ body {
   background: var(--surface); color: var(--page-fg);
 }
 
-.view { max-width: 1180px; margin: 0 auto; padding: 20px; }
+.view { max-width: none; margin: 0; padding: 0; }
 #view-daily { max-width: none; padding: 0; }
 
 /* ---------- controls ---------- */
@@ -256,7 +257,8 @@ td.col-bd { font-variant-numeric: normal; }
 .shell-status { padding: 40px 20px; text-align: center; color: var(--status-fg); font-size: 14px; display: none; }
 .report-frame {
   display: block; width: 100%; min-height: 400px;
-  border: 0; background: transparent;
+  border: 1px solid var(--chrome-border); border-radius: 8px;
+  background: var(--surface); box-shadow: var(--xg-shadow-soft);
 }
 
 @media (max-width: 620px) {

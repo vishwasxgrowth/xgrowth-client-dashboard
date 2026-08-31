@@ -786,6 +786,18 @@
     } catch (e) { /* cross-origin cannot happen with srcdoc, but stay safe */ }
   }
 
+  var embeddedReportTheme = '<style>' +
+    ':root{--bg:transparent;--card:#fffaf2;--card-2:#f3ecdf;--soft:#f3ecdf;--text:#171514;--ink:#171514;--ink-soft:#5e5a51;--ink-faint:#817a6c;--mut:#817a6c;--bd:#ded3c2;--line:#ded3c2;--accent:#9f7a32;--accentbg:rgba(159,122,50,.14);--up:#24684c;--up-bg:rgba(36,104,76,.13);--upbg:rgba(36,104,76,.13);--down:#a13d34;--down-bg:rgba(161,61,52,.13);--downbg:rgba(161,61,52,.13);--breach-bg:rgba(161,61,52,.10);--breach-line:rgba(161,61,52,.34);--dx-monet:#9d6420;--dx-traffic:#335f80;--dx-tech:#7a3f62;--growth-bg:rgba(36,104,76,.13);--growth-ink:#24684c;--mod-bg:rgba(161,61,52,.13);--mod-ink:#a13d34;--shadow:0 8px 28px rgba(60,45,24,.09);}' +
+    ':root[data-theme="dark"]{--bg:transparent;--card:#111722;--card-2:#0d131d;--soft:#0d131d;--text:#f4efe4;--ink:#f4efe4;--ink-soft:#c8c0ae;--ink-faint:#9f9787;--mut:#9f9787;--bd:#273142;--line:#273142;--accent:#d1aa57;--accentbg:rgba(209,170,87,.16);--up:#72b28c;--up-bg:rgba(114,178,140,.15);--upbg:rgba(114,178,140,.15);--down:#f08a77;--down-bg:rgba(240,138,119,.15);--downbg:rgba(240,138,119,.15);--breach-bg:rgba(240,138,119,.13);--breach-line:rgba(240,138,119,.34);--dx-monet:#dcae62;--dx-traffic:#8cb7d2;--dx-tech:#c184a7;--growth-bg:rgba(114,178,140,.15);--growth-ink:#72b28c;--mod-bg:rgba(240,138,119,.15);--mod-ink:#f08a77;--shadow:0 10px 30px rgba(0,0,0,.28);}' +
+    'body{background:transparent!important;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif!important;color:var(--ink)!important;}' +
+    '.wrap{max-width:none!important;padding:0 0 28px!important;}' +
+    'h1{font-family:Georgia,"Times New Roman",serif!important;font-size:32px!important;font-weight:620!important;letter-spacing:0!important;text-transform:none!important;}' +
+    'section,.appcard,.table-card,.banner,.takeaway{border-radius:8px!important;box-shadow:var(--shadow)!important;}' +
+    '.level,.headline h1,h2.sec{letter-spacing:.08em!important;color:var(--accent)!important;}' +
+    '.chip,.revcell,.ovc,.pcard,.panel,.split .box{border:1px solid var(--line)!important;background:var(--card-2)!important;border-radius:8px!important;}' +
+    '.chip.up,.chip-down,.chip-up{border-color:transparent!important;}' +
+    '</style>';
+
   function loadReport(date) {
     setStatus('Loading ' + date + '...');
     el.reportFrame.style.visibility = 'hidden';
@@ -806,7 +818,7 @@
         el.reportFrame.srcdoc =
           '<!doctype html><html data-theme="' + theme + '"><head><meta charset="utf-8">' +
           '<meta name="viewport" content="width=device-width, initial-scale=1">' +
-          '<style>html,body{margin:0;padding:0}</style></head><body>' + html + '</body></html>';
+          '<style>html,body{margin:0;padding:0}</style></head><body>' + html + embeddedReportTheme + '</body></html>';
         setStatus('');
       });
     }).catch(function (err) { setStatus('Failed to load ' + date + ': ' + err.message); });

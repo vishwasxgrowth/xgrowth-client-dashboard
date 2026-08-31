@@ -89,9 +89,11 @@ function compareBundle(ts, appName) {
       yoy: metricDelta(latest && latest.revenue, sameDayLastYear && sameDayLastYear.revenue),
     },
     arpdavDelta: {
+      dod: metricDelta(valueOf(latest, "arpdav"), valueOf(prevDay, "arpdav")),
       sdlw: metricDelta(valueOf(latest, "arpdav"), valueOf(sameDayLastWeek, "arpdav")),
-      d7: metricDelta(valueOf(week, "arpdav"), valueOf(priorWeek, "arpdav")),
+      wow: metricDelta(valueOf(week, "arpdav"), valueOf(priorWeek, "arpdav")),
       d30: metricDelta(valueOf(month, "arpdav"), valueOf(priorMonth, "arpdav")),
+      yoy: metricDelta(valueOf(latest, "arpdav"), valueOf(sameDayLastYear, "arpdav")),
     },
     deltas: {
       ecpm: metricDelta(valueOf(latest, "ecpm"), valueOf(sameDayLastWeek, "ecpm")),
@@ -152,10 +154,28 @@ function firstName(name) {
 
 function DeltaPill({ label, change }) {
   return (
-    <div title={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, border: "1px solid " + C.line, background: C.field, color: change.fg, borderRadius: 8, padding: "7px 10px", minWidth: 0, whiteSpace: "nowrap" }}>
-      <span style={{ color: C.faint, fontSize: 10, fontWeight: 800, letterSpacing: ".04em" }}>{label}</span>
-      <span style={{ fontSize: 14, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{change.arrow} {change.txt}</span>
+    <div title={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, border: "1px solid " + C.line, background: C.field, color: change.fg, borderRadius: 8, padding: "7px 8px", minWidth: 0, whiteSpace: "nowrap" }}>
+      <span style={{ color: C.faint, fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em" }}>{label}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{change.arrow} {change.txt}</span>
     </div>
+  );
+}
+
+function MetricCard({ title, value, subtitle, deltas }) {
+  return (
+    <section style={{ ...card, padding: 22, minHeight: 184, display: "grid", alignContent: "space-between", gap: 18, overflow: "hidden" }}>
+      <div>
+        <div style={{ fontSize: 40, fontWeight: 760, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{value}</div>
+        <div style={{ color: C.faint, fontSize: 11, fontWeight: 760, textTransform: "uppercase", marginTop: 8 }}>{title}</div>
+        {subtitle && <div style={{ color: C.sub, fontSize: 12, marginTop: 3 }}>{subtitle}</div>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
+        <DeltaPill label="DOD" change={deltas.dod} />
+        <DeltaPill label="SDLW" change={deltas.sdlw} />
+        <DeltaPill label="WOW" change={deltas.wow} />
+        <DeltaPill label="YOY" change={deltas.yoy} />
+      </div>
+    </section>
   );
 }
 
@@ -181,7 +201,7 @@ function CompareCell({ change }) {
 }
 
 function TaskCell({ row, taskLoadState, onOpenTask, onCreateTask }) {
-  if (taskLoadState === "loading") return <span style={{ color: C.faint, fontSize: 12 }}>Checking ClickUp...</span>;
+  if (taskLoadState === "loading") return <span style={{ color: C.faint, fontSize: 12 }}>—</span>;
   if (row.primaryTask) {
     const assignee = row.primaryTask.assignee;
     return (
@@ -203,7 +223,7 @@ function sortValue(row, key) {
   if (key === "tier") return TIER_RANK[row.tier.id] || 9;
   if (key === "revenue") return row.latest.revenue || 0;
   if (key === "sdlw") return row.arpdavDelta.sdlw.v ?? -999;
-  if (key === "d7") return row.arpdavDelta.d7.v ?? -999;
+  if (key === "d7") return row.arpdavDelta.wow.v ?? -999;
   if (key === "d30") return row.arpdavDelta.d30.v ?? -999;
   if (key === "ecpm") return row.deltas.ecpm.v ?? -999;
   if (key === "impressions") return row.deltas.impressions.v ?? -999;
@@ -239,7 +259,7 @@ function AppTable({ title, rows, empty, direction, taskLoadState, onOpenApp, onO
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "16px 18px", borderBottom: "1px solid " + C.line, flexWrap: "wrap" }}>
         <div style={{ color: C.accentDk, fontSize: 13, fontWeight: 850, letterSpacing: ".08em", textTransform: "uppercase" }}>{title}</div>
         <span style={{ color: C.sub, fontSize: 18, fontWeight: 760 }}>{rows.length} apps</span>
-        <span style={{ color: C.faint, fontSize: 12 }}>T1 first by default - ARPDAV recent trend - 12 visible rows</span>
+        <span style={{ color: C.faint, fontSize: 12 }}>T1 first by default - ARPDAV vs SDLW - 12 visible rows</span>
       </div>
       <div style={{ padding: "12px 18px 8px", display: "flex", gap: 18, color: C.sub, fontSize: 12.5, flexWrap: "wrap" }}>
         <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: C.warn, marginRight: 7 }} />Monetization</span>
@@ -281,7 +301,7 @@ function AppTable({ title, rows, empty, direction, taskLoadState, onOpenApp, onO
                   <td style={{ padding: "13px 14px", textAlign: "right", color: C.faint, fontSize: 14, fontWeight: 820 }}>{row.tier.id}</td>
                   <td style={{ padding: "13px 14px", textAlign: "right", fontWeight: 720, fontVariantNumeric: "tabular-nums" }}>{money(row.latest.revenue)}</td>
                   <CompareCell change={row.arpdavDelta.sdlw} />
-                  <CompareCell change={row.arpdavDelta.d7} />
+                  <CompareCell change={row.arpdavDelta.wow} />
                   <CompareCell change={row.arpdavDelta.d30} />
                   <CompareCell change={row.deltas.ecpm} />
                   <CompareCell change={row.deltas.impressions} />
@@ -327,11 +347,11 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, taskLoadSt
       return { ...row, source: sourceFor(row) };
     }).filter((row) => (row.latest.revenue || 0) >= MIN_DAILY_REVENUE && row.latest.dav);
     const down = appRows
-      .filter((row) => (row.trend.change.v || 0) < -0.15)
-      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (a.trend.change.v || 0) - (b.trend.change.v || 0));
+      .filter((row) => (row.arpdavDelta.sdlw.v || 0) < -0.15)
+      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (a.arpdavDelta.sdlw.v || 0) - (b.arpdavDelta.sdlw.v || 0));
     const up = appRows
-      .filter((row) => (row.trend.change.v || 0) >= 0.15)
-      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (b.trend.change.v || 0) - (a.trend.change.v || 0));
+      .filter((row) => (row.arpdavDelta.sdlw.v || 0) >= 0.15)
+      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (b.arpdavDelta.sdlw.v || 0) - (a.arpdavDelta.sdlw.v || 0));
     return { portfolio, down, up, appCount: appRows.length };
   }, [ts, tasks, taskAppMap]);
 
@@ -357,44 +377,21 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, taskLoadSt
       ctxBad: isDrop,
     });
   };
-  const taskNote = taskLoadState === "ready"
-    ? "ClickUp checked: Mediation Setup tasks in To Do, In Progress, or Waiting only."
-    : taskLoadState === "loading"
-      ? "Checking Mediation Setup tasks..."
-      : taskLoadState === "error"
-        ? "ClickUp task check failed: " + taskError
-        : "ClickUp tasks will load here for Mediation Setup only.";
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ ...card, padding: 24, overflow: "hidden" }}>
-        <div style={{ display: "grid", gap: 22 }}>
+      <section style={{ display: "grid", gap: 12 }}>
+        <div>
           <h1 className="xg-display" style={{ margin: 0, fontSize: 42, lineHeight: 1.03, fontWeight: 620 }}>Overview</h1>
-          <div style={{ color: C.faint, fontSize: 12, fontWeight: 720, letterSpacing: ".04em", textTransform: "uppercase", marginTop: -14 }}>Data through {p.latestDate}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,260px))", gap: 18 }}>
-            <div>
-              <div style={{ fontSize: 40, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{money(latest.revenue)}</div>
-              <div style={{ color: C.faint, fontSize: 11, fontWeight: 760, textTransform: "uppercase", marginTop: 2 }}>Revenue yesterday</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 40, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{latest.dav ? money4(latest.arpdav) : "n/a"}</div>
-              <div style={{ color: C.faint, fontSize: 11, fontWeight: 760, textTransform: "uppercase", marginTop: 2 }}>ARPDAV vs SDLW</div>
-            </div>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(130px,1fr))", gap: 8 }}>
-            <DeltaPill label="DOD" change={p.revenueDelta.dod} />
-            <DeltaPill label="SDLW" change={p.revenueDelta.sdlw} />
-            <DeltaPill label="WOW" change={p.revenueDelta.wow} />
-            <DeltaPill label="YOY" change={p.revenueDelta.yoy} />
-            <DeltaPill label="ARPDAV" change={p.arpdavDelta.sdlw} />
-          </div>
+          <div style={{ color: C.faint, fontSize: 12, fontWeight: 720, letterSpacing: ".04em", textTransform: "uppercase", marginTop: 8 }}>Data through {p.latestDate}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 14 }}>
+          <MetricCard title="Revenue yesterday" value={money(latest.revenue)} subtitle="Portfolio total" deltas={p.revenueDelta} />
+          <MetricCard title="ARPDAV yesterday" value={latest.dav ? money4(latest.arpdav) : "n/a"} subtitle="Compared across DOD, SDLW, WOW, YOY" deltas={p.arpdavDelta} />
         </div>
       </section>
 
-      <div style={{ color: C.faint, fontSize: 12.5, padding: "0 2px" }}>{taskNote}</div>
-
-      <AppTable title="Needs Attention" direction="down" rows={model.down} empty="No ARPDAV downtrend found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
-      <AppTable title="Improved Performance" direction="up" rows={model.up} empty="No ARPDAV uplift found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
+      <AppTable title="Needs Attention" direction="down" rows={model.down} empty="No ARPDAV SDLW decline found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
+      <AppTable title="Improved Performance" direction="up" rows={model.up} empty="No ARPDAV SDLW improvement found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
 
       <div style={{ color: C.faint, fontSize: 12, lineHeight: 1.45, padding: "0 2px" }}>
         Showing {model.appCount} apps above the {money(MIN_DAILY_REVENUE)}/day floor. Sort any header; each table keeps 12 rows visible and scrolls for the full list.
