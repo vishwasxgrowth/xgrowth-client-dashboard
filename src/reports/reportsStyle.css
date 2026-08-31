@@ -1,64 +1,18 @@
 :root {
-  --page-bg: #f5f6f8;
-  --surface: #ffffff;
-  --page-fg: #14181f;
-  --chrome-border: #e2e5ea;
-  --status-fg: #6b7280;
-  --muted-fg: #8b93a1;
-  --grid: #e8ebef;
-  --line: var(--line-light);
-  --line-wash: var(--wash-light);
-  --compare: #9aa3ae;
-  --up: #15723f;
-  --down: #a93226;
-  --surface-sunk: #f0f2f5;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --page-bg: #0b0d12;
-    --surface: #131721;
-    --page-fg: #e7e9ee;
-    --chrome-border: #232833;
-    --status-fg: #8b93a1;
-    --muted-fg: #6b7482;
-    --grid: #1e2531;
-    --line: var(--line-dark);
-    --line-wash: var(--wash-dark);
-    --compare: #5d6673;
-    --up: #43b478;
-    --down: #e0705f;
-    --surface-sunk: #0f131b;
-  }
-}
-:root[data-theme="light"] {
-  --page-bg: #f5f6f8;
-  --surface: #ffffff;
-  --page-fg: #14181f;
-  --chrome-border: #e2e5ea;
-  --status-fg: #6b7280;
-  --muted-fg: #8b93a1;
-  --grid: #e8ebef;
-  --line: var(--line-light);
-  --line-wash: var(--wash-light);
-  --compare: #9aa3ae;
-  --up: #15723f;
-  --down: #a93226;
-  --surface-sunk: #f0f2f5;
-}
-:root[data-theme="dark"] {
-  --page-bg: #0b0d12;
-  --surface: #131721;
-  --page-fg: #e7e9ee;
-  --chrome-border: #232833;
-  --status-fg: #8b93a1;
-  --muted-fg: #6b7482;
-  --grid: #1e2531;
-  --line: var(--line-dark);
-  --line-wash: var(--wash-dark);
-  --compare: #5d6673;
-  --up: #43b478;
-  --down: #e0705f;
-  --surface-sunk: #0f131b;
+  --page-bg: var(--xg-bg);
+  --surface: var(--xg-surface);
+  --page-fg: var(--xg-ink);
+  --chrome-border: var(--xg-line);
+  --status-fg: var(--xg-sub);
+  --muted-fg: var(--xg-faint);
+  --grid: var(--xg-line);
+  --line: var(--xg-accent);
+  --line-wash: var(--xg-accent-soft);
+  --accent: var(--xg-accent);
+  --compare: var(--xg-faint-2);
+  --up: var(--xg-forest);
+  --down: var(--xg-danger);
+  --surface-sunk: var(--xg-panel);
 }
 
 * { box-sizing: border-box; }
@@ -66,7 +20,7 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--page-bg);
   color: var(--page-fg);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--xg-font-sans);
   font-size: 15px;
 }
 .num, .tabular { font-variant-numeric: tabular-nums; }
@@ -78,13 +32,14 @@ body {
   gap: 20px;
   padding: 12px 20px;
   border-bottom: 1px solid var(--chrome-border);
-  background: var(--surface);
+  background: transparent;
   flex-wrap: wrap;
 }
 .shell-title {
-  font-size: 14px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-family: var(--xg-font-display);
+  font-size: 21px;
+  font-weight: 620;
+  letter-spacing: 0;
   color: var(--accent, var(--page-fg));
 }
 .shell-tabs { display: flex; gap: 2px; margin-right: auto; }
@@ -134,7 +89,7 @@ body {
 }
 .seg:last-child { border-right: 0; }
 .seg:hover { color: var(--page-fg); }
-.seg.is-active { background: var(--line); color: #fff; font-weight: 600; }
+.seg.is-active { background: var(--line); color: var(--xg-inverse); font-weight: 600; }
 select {
   font: inherit; font-size: 13px; padding: 5px 8px; max-width: 300px;
   border-radius: 6px; border: 1px solid var(--chrome-border);
@@ -149,6 +104,7 @@ select {
 .stat {
   background: var(--surface); border: 1px solid var(--chrome-border);
   border-radius: 8px; padding: 14px 16px;
+  box-shadow: var(--xg-shadow-soft);
 }
 .stat-label {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
@@ -165,6 +121,7 @@ select {
 .hero {
   background: var(--surface); border: 1px solid var(--chrome-border);
   border-radius: 8px; padding: 16px 18px; margin-bottom: 12px;
+  box-shadow: var(--xg-shadow-soft);
 }
 .hero-label {
   font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em;
@@ -211,6 +168,7 @@ button.pcard:hover { border-color: var(--line); background: var(--surface-sunk);
 .chart-card {
   margin: 0 0 18px; background: var(--surface);
   border: 1px solid var(--chrome-border); border-radius: 8px; padding: 16px;
+  box-shadow: var(--xg-shadow-soft);
 }
 .chart-head {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -241,6 +199,7 @@ button.pcard:hover { border-color: var(--line); background: var(--surface-sunk);
 .table-card {
   background: var(--surface); border: 1px solid var(--chrome-border);
   border-radius: 8px; overflow: hidden;
+  box-shadow: var(--xg-shadow-soft);
 }
 .table-head {
   display: flex; align-items: baseline; justify-content: space-between;

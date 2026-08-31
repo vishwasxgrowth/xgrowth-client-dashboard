@@ -1,0 +1,180 @@
+:root {
+  color-scheme: light;
+  --xg-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --xg-font-display: Georgia, "Times New Roman", serif;
+  --xg-bg: #f5f0e8;
+  --xg-bg-2: #ebe4da;
+  --xg-surface: #fffaf2;
+  --xg-surface-2: #f8f1e7;
+  --xg-panel: #f3ecdf;
+  --xg-field: #fffdf8;
+  --xg-elevated: #fffaf2;
+  --xg-ink: #171514;
+  --xg-sub: #5e5a51;
+  --xg-faint: #817a6c;
+  --xg-faint-2: #9b9281;
+  --xg-line: #ded3c2;
+  --xg-line-strong: #c5b694;
+  --xg-accent: #9f7a32;
+  --xg-accent-strong: #6f5119;
+  --xg-accent-soft: rgba(159, 122, 50, 0.14);
+  --xg-forest: #24684c;
+  --xg-forest-soft: rgba(36, 104, 76, 0.13);
+  --xg-plum: #7a3f62;
+  --xg-plum-soft: rgba(122, 63, 98, 0.13);
+  --xg-danger: #a13d34;
+  --xg-danger-soft: rgba(161, 61, 52, 0.13);
+  --xg-warn: #9d6420;
+  --xg-warn-soft: rgba(157, 100, 32, 0.15);
+  --xg-info: #335f80;
+  --xg-info-soft: rgba(51, 95, 128, 0.13);
+  --xg-shadow: 0 18px 48px rgba(60, 45, 24, 0.12);
+  --xg-shadow-soft: 0 8px 28px rgba(60, 45, 24, 0.09);
+  --xg-overlay: rgba(22, 17, 12, 0.48);
+  --xg-focus: #b9923d;
+  --xg-inverse: #171514;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --xg-bg: #070b12;
+  --xg-bg-2: #0c1220;
+  --xg-surface: #111722;
+  --xg-surface-2: #161d2a;
+  --xg-panel: #0d131d;
+  --xg-field: #0b111a;
+  --xg-elevated: #18202e;
+  --xg-ink: #f4efe4;
+  --xg-sub: #c8c0ae;
+  --xg-faint: #9f9787;
+  --xg-faint-2: #787f8d;
+  --xg-line: #273142;
+  --xg-line-strong: #46536a;
+  --xg-accent: #d1aa57;
+  --xg-accent-strong: #f0d38a;
+  --xg-accent-soft: rgba(209, 170, 87, 0.16);
+  --xg-forest: #72b28c;
+  --xg-forest-soft: rgba(114, 178, 140, 0.15);
+  --xg-plum: #c184a7;
+  --xg-plum-soft: rgba(193, 132, 167, 0.15);
+  --xg-danger: #f08a77;
+  --xg-danger-soft: rgba(240, 138, 119, 0.15);
+  --xg-warn: #dcae62;
+  --xg-warn-soft: rgba(220, 174, 98, 0.16);
+  --xg-info: #8cb7d2;
+  --xg-info-soft: rgba(140, 183, 210, 0.15);
+  --xg-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --xg-shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --xg-overlay: rgba(3, 6, 12, 0.7);
+  --xg-focus: #e3bc64;
+  --xg-inverse: #080b11;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--xg-bg);
+  color: var(--xg-ink);
+  font-family: var(--xg-font-sans);
+  font-size: 14px;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--xg-focus);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--xg-accent-soft);
+  color: var(--xg-ink);
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--xg-line-strong) 68%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+
+.xg-app-shell {
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--xg-bg) 92%, var(--xg-accent) 8%), var(--xg-bg-2));
+}
+
+.xg-display {
+  font-family: var(--xg-font-display);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.xg-theme-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  width: 76px;
+  height: 34px;
+  padding: 3px;
+  border: 1px solid var(--xg-line);
+  border-radius: 8px;
+  background: var(--xg-field);
+  box-shadow: var(--xg-shadow-soft);
+}
+
+.xg-theme-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--xg-faint);
+  cursor: pointer;
+}
+
+.xg-theme-toggle button[aria-pressed="true"] {
+  background: var(--xg-accent-soft);
+  color: var(--xg-accent-strong);
+}
+
+.xg-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--xg-line);
+  background: var(--xg-field);
+  color: var(--xg-sub);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.xg-field {
+  border: 1px solid var(--xg-line);
+  background: var(--xg-field);
+  color: var(--xg-ink);
+  border-radius: 8px;
+}
+
+.xg-field::placeholder {
+  color: var(--xg-faint-2);
+}
+
+.xg-muted-control {
+  background: var(--xg-panel);
+  color: var(--xg-sub);
+  border: 1px solid var(--xg-line);
+}
+
+@media (max-width: 820px) {
+  .xg-hide-sm { display: none !important; }
+}

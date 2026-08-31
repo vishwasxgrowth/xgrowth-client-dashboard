@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useContext, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "./design.css";
 
 import { AuthContext, AuthProvider } from "./auth";
 import { setDataSource } from "./activeData";
@@ -16,20 +17,20 @@ const PROXY = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").trim();
 
 function Login({ onSignIn }) {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F6F7F9", fontFamily: "'Instrument Sans', system-ui, sans-serif" }}>
-      <div style={{ width: 360, background: "#fff", border: "1px solid #E9EAF0", borderRadius: 16, padding: "34px 32px", boxShadow: "0 12px 40px rgba(20,22,28,.06)" }}>
+    <div className="xg-app-shell" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--xg-font-sans)", padding: 20 }}>
+      <div style={{ width: 380, background: "var(--xg-surface)", color: "var(--xg-ink)", border: "1px solid var(--xg-line)", borderRadius: 10, padding: "36px 34px", boxShadow: "var(--xg-shadow)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: "#5B4BE8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--xg-accent)", color: "var(--xg-inverse)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
           <b>{NAME}</b>
         </div>
-        <h2 style={{ margin: "0 0 6px" }}>Sign in</h2>
-        <p style={{ margin: "0 0 20px", color: "#6B7280", fontSize: 13.5 }}>Sign in with the Google account that owns your AdMob.</p>
-        <button onClick={onSignIn} style={{ width: "100%", padding: 11, borderRadius: 10, border: "1px solid #E4E6EE", background: "#fff", fontWeight: 600, cursor: "pointer" }}>Continue with Google</button>
+        <h2 className="xg-display" style={{ margin: "0 0 6px", fontSize: 28 }}>Sign in</h2>
+        <p style={{ margin: "0 0 20px", color: "var(--xg-sub)", fontSize: 13.5 }}>Sign in with the Google account that owns your AdMob.</p>
+        <button onClick={onSignIn} style={{ width: "100%", padding: 11, borderRadius: 8, border: "1px solid var(--xg-line)", background: "var(--xg-field)", fontWeight: 650, cursor: "pointer" }}>Continue with Google</button>
       </div>
     </div>
   );
 }
-function Center({ children }) { return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#8A90A0", fontFamily: "system-ui" }}>{children}</div>; }
+function Center({ children }) { return <div className="xg-app-shell" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--xg-faint)", fontFamily: "var(--xg-font-sans)" }}>{children}</div>; }
 
 function Shell() {
   const auth = useContext(AuthContext);

@@ -8,6 +8,7 @@
   'use strict';
 
   var CFG = window.CLIENT_CONFIG || {};
+  var RPT_MODE = window.__RPT_MODE || 'both';
   var PORTFOLIO = '__portfolio__';
 
   var TS = null;
@@ -844,8 +845,15 @@
     if (!trends) initDaily();
     else if (TS) drawChart();
   }
+  if (RPT_MODE === 'trends' || RPT_MODE === 'daily') {
+    el.tabTrends.hidden = true;
+    el.tabDaily.hidden = true;
+    el.title.textContent = RPT_MODE === 'daily' ? 'Daily Reports' : 'Trends';
+  }
   el.tabTrends.addEventListener('click', function () { showView('trends'); });
   el.tabDaily.addEventListener('click', function () { showView('daily'); });
 
-  initTrends();
+  initTrends().then(function () {
+    showView(RPT_MODE === 'daily' ? 'daily' : 'trends');
+  });
 })();

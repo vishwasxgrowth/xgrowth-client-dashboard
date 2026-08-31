@@ -43,8 +43,8 @@ export default function AppsTab({ ts, tsError, range, setRange, q, selApps, appI
         return { name, a, cells };
       })
       .sort((x, y) => y.a.revenue - x.a.revenue);
-    const hbase = { fontSize: 11, fontWeight: 600, letterSpacing: ".03em", textTransform: "uppercase", padding: "10px 14px", background: "#FAFAFC", borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", textAlign: "right" };
-    const cbase = { padding: "10px 14px", borderBottom: "1px solid #F1F2F6", whiteSpace: "nowrap", textAlign: "right" };
+    const hbase = { fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "10px 14px", background: C.panel, color: C.faint, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", textAlign: "right" };
+    const cbase = { padding: "10px 14px", borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", textAlign: "right" };
     return (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -103,7 +103,7 @@ export default function AppsTab({ ts, tsError, range, setRange, q, selApps, appI
           <span style={{ fontSize: 12, color: C.faint }}>{ts.dates[r.a]} → {ts.dates[r.b]}</span>
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12, marginBottom: 16 }}>
         {stats.map((s) => <div key={s.label} style={{ ...card, padding: "12px 14px" }}><div style={{ fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600 }}>{s.label}</div><div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0", fontVariantNumeric: "tabular-nums" }}>{s.v}</div><div style={{ fontSize: 10.5, color: s.d.fg, fontVariantNumeric: "tabular-nums" }}>{s.d.arrow} {s.d.txt.replace("+", "")}</div></div>)}
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 14, borderBottom: "1px solid " + C.line }}>
@@ -117,9 +117,9 @@ export default function AppsTab({ ts, tsError, range, setRange, q, selApps, appI
 
 function RangePicker({ range, setRange }) {
   return (
-    <div style={{ display: "flex", background: "#EDEEF2", borderRadius: 9, padding: 3 }}>
+    <div style={{ display: "flex", background: C.panel, border: "1px solid " + C.line, borderRadius: 8, padding: 3 }}>
       {[["y", "Yesterday"], ["7", "Last 7 days"], ["30", "Last 30 days"]].map(([id, label]) => (
-        <button key={id} onClick={() => setRange(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: range === id ? 650 : 550, padding: "5px 12px", borderRadius: 7, background: range === id ? "#fff" : "transparent", color: range === id ? C.ink : "#6B7180", boxShadow: range === id ? "0 1px 2px rgba(16,24,40,.1)" : "none" }}>{label}</button>
+        <button key={id} onClick={() => setRange(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: range === id ? 650 : 550, padding: "5px 12px", borderRadius: 6, background: range === id ? C.surface : "transparent", color: range === id ? C.ink : C.sub, boxShadow: range === id ? C.shadowSoft : "none" }}>{label}</button>
       ))}
     </div>
   );
@@ -132,14 +132,14 @@ function AppDashboardCharts({ ts, appName, a, b, agg }) {
   const dates = days.map((r) => r.date);
   const blocks = [
     { label: "Revenue", values: days.map((r) => r.revenue || 0), total: agg.revenue, fmt: money, color: appColor(appName) },
-    { label: "eCPM", values: days.map((r) => r.ecpm || 0), total: agg.ecpm, fmt: money2, color: "#0E9F6E" },
-    { label: "Impressions", values: days.map((r) => r.impressions || 0), total: agg.impressions, fmt: compact, color: "#D9730D" },
-    { label: "ARPDAV", values: days.map((r) => r.arpdav || 0), total: agg.arpdav, fmt: money4, color: "#7C3AED" },
-    { label: "DAU (active users)", values: days.map((r) => r.dau || 0), total: agg.dau, fmt: compact, color: "#2563EB" },
-    { label: "DAV (ad viewers)", values: days.map((r) => r.dav || 0), total: agg.dav, fmt: compact, color: "#DB2777" },
+    { label: "eCPM", values: days.map((r) => r.ecpm || 0), total: agg.ecpm, fmt: money2, color: "var(--xg-forest)" },
+    { label: "Impressions", values: days.map((r) => r.impressions || 0), total: agg.impressions, fmt: compact, color: "var(--xg-warn)" },
+    { label: "ARPDAV", values: days.map((r) => r.arpdav || 0), total: agg.arpdav, fmt: money4, color: "var(--xg-plum)" },
+    { label: "DAU (active users)", values: days.map((r) => r.dau || 0), total: agg.dau, fmt: compact, color: "var(--xg-info)" },
+    { label: "DAV (ad viewers)", values: days.map((r) => r.dav || 0), total: agg.dav, fmt: compact, color: "var(--xg-accent)" },
   ];
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 12 }}>
       {blocks.map((bl) => <MiniMetricChart key={bl.label} dates={dates} {...bl} />)}
     </div>
   );
@@ -182,18 +182,18 @@ function MiniMetricChart({ label, dates, values, total, fmt, color }) {
       <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", color: C.faint, marginBottom: 8 }}>{label}</div>
       <div style={{ position: "relative" }} onMouseLeave={() => setHov(-1)}>
         {hovering && (
-          <div style={{ position: "absolute", top: 2, left: leftPct + "%", transform: "translateX(" + clampTx + ")", background: "#14161C", color: "#fff", borderRadius: 8, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 2, boxShadow: "0 6px 16px rgba(0,0,0,.22)" }}>
-            <div style={{ color: "#B4B9C4", fontSize: 9.5, marginBottom: 1 }}>{shortDate(dates[hov])}</div>
+          <div style={{ position: "absolute", top: 2, left: leftPct + "%", transform: "translateX(" + clampTx + ")", background: C.elevated, color: C.ink, border: "1px solid " + C.line, borderRadius: 8, padding: "5px 9px", fontSize: 11, whiteSpace: "nowrap", pointerEvents: "none", zIndex: 2, boxShadow: C.shadow }}>
+            <div style={{ color: C.faint2, fontSize: 9.5, marginBottom: 1 }}>{shortDate(dates[hov])}</div>
             <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmt(values[hov])}</div>
           </div>
         )}
         <svg viewBox={"0 0 " + w + " " + h} style={{ width: "100%", height: "auto", display: "block" }} onMouseMove={onMove}>
-          {grid.map((g, i) => <g key={i}><line x1={padL} x2={w - padR} y1={g.y} y2={g.y} stroke="#F1F2F6" /><text x={padL - 6} y={g.y + 3} textAnchor="end" fontSize="8.5" fill="#9AA0AE" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(g.v)}</text></g>)}
+          {grid.map((g, i) => <g key={i}><line x1={padL} x2={w - padR} y1={g.y} y2={g.y} stroke="var(--xg-line)" /><text x={padL - 6} y={g.y + 3} textAnchor="end" fontSize="8.5" fill="var(--xg-faint-2)" style={{ fontVariantNumeric: "tabular-nums" }}>{fmt(g.v)}</text></g>)}
           {n > 1 ? <path d={line} fill="none" stroke={color} strokeWidth="1.8" /> : (n === 1 && <circle cx={X(0)} cy={Y(values[0] || 0)} r="3" fill={color} />)}
-          {dates[0] && <text x={padL} y={h - 4} fontSize="8.5" fill="#9AA0AE">{shortDate(dates[0])}</text>}
-          {dates[n - 1] && <text x={w - padR} y={h - 4} textAnchor="end" fontSize="8.5" fill="#9AA0AE">{shortDate(dates[n - 1])}</text>}
+          {dates[0] && <text x={padL} y={h - 4} fontSize="8.5" fill="var(--xg-faint-2)">{shortDate(dates[0])}</text>}
+          {dates[n - 1] && <text x={w - padR} y={h - 4} textAnchor="end" fontSize="8.5" fill="var(--xg-faint-2)">{shortDate(dates[n - 1])}</text>}
           {hovering && <line x1={X(hov)} x2={X(hov)} y1={padT} y2={padT + ih} stroke={color} strokeOpacity="0.4" strokeDasharray="3 3" />}
-          {hovering && <circle cx={X(hov)} cy={Y(values[hov])} r="3.5" fill={color} stroke="#fff" strokeWidth="1.5" />}
+          {hovering && <circle cx={X(hov)} cy={Y(values[hov])} r="3.5" fill={color} stroke="var(--xg-surface)" strokeWidth="1.5" />}
           {n <= 1 && <rect x="0" y="0" width={w} height={h} fill="transparent" />}
         </svg>
       </div>

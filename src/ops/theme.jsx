@@ -1,45 +1,55 @@
 // @ts-nocheck
 // Shared design tokens, formatters, and tiny building-block components for
 // the Ops console (Applications / Tasks / Tests / Settings). Kept in one
-// place so every tab reads the same palette and number formatting instead of
-// each re-declaring its own — the actual "premium" lever is consistency, not
-// any one component.
+// place so every tab reads the same palette and number formatting; the actual
+// "premium" lever is consistency, not any one component.
 import { useState } from "react";
 import D from "../activeData";
 
 // Same reliable system-font stack the Dashboard/Trends tab uses (see
-// src/reports/reportsStyle.css) — no custom webfont name that silently falls
+// src/reports/reportsStyle.css), no custom webfont name that silently falls
 // back because nothing ever loaded it. Numbers align via tabular-nums
 // (applied app-wide from the root container in XgrowthOps.tsx) instead of a
 // separate monospace face, again matching the Dashboard tab's approach.
 const SYSTEM_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+const DISPLAY = "Georgia, 'Times New Roman', serif";
 
 export const C = {
-  bg: "#F6F7F9", panel: "#FAFAFC", surface: "#FFFFFF", line: "#E9EAF0",
-  ink: "#14161C", sub: "#5B6172", faint: "#8A90A0", faint2: "#9AA0AE",
-  accent: "#5B4BE8", accentDk: "#4E3FD8", accentBg: "#EFEDFF",
+  bg: "var(--xg-bg)", bg2: "var(--xg-bg-2)", panel: "var(--xg-panel)", surface: "var(--xg-surface)",
+  surface2: "var(--xg-surface-2)", field: "var(--xg-field)", elevated: "var(--xg-elevated)",
+  line: "var(--xg-line)", lineStrong: "var(--xg-line-strong)",
+  ink: "var(--xg-ink)", sub: "var(--xg-sub)", faint: "var(--xg-faint)", faint2: "var(--xg-faint-2)",
+  accent: "var(--xg-accent)", accentDk: "var(--xg-accent-strong)", accentBg: "var(--xg-accent-soft)",
+  forest: "var(--xg-forest)", forestBg: "var(--xg-forest-soft)",
+  plum: "var(--xg-plum)", plumBg: "var(--xg-plum-soft)",
+  danger: "var(--xg-danger)", dangerBg: "var(--xg-danger-soft)",
+  warn: "var(--xg-warn)", warnBg: "var(--xg-warn-soft)",
+  info: "var(--xg-info)", infoBg: "var(--xg-info-soft)",
+  overlay: "var(--xg-overlay)", inverse: "var(--xg-inverse)",
+  shadow: "var(--xg-shadow)", shadowSoft: "var(--xg-shadow-soft)",
   mono: SYSTEM_SANS,
   sans: SYSTEM_SANS,
+  display: DISPLAY,
 };
 export const GROUPS = {
-  todo: { label: "To Do", fg: "#5B6172", bg: "#F1F2F6", dot: "#9AA0AE" },
-  progress: { label: "In Progress", fg: "#4E3FD8", bg: "#EFEDFF", dot: "#5B4BE8" },
-  waiting: { label: "Waiting", fg: "#B45309", bg: "#FEF3C7", dot: "#D9730D" },
-  blocked: { label: "Blocked", fg: "#C31C2B", bg: "#FDECEE", dot: "#E02D3C" },
-  done: { label: "Done", fg: "#0B7A55", bg: "#E6F6F0", dot: "#0E9F6E" },
+  todo: { label: "To Do", fg: C.sub, bg: C.panel, dot: C.faint2 },
+  progress: { label: "In Progress", fg: C.accentDk, bg: C.accentBg, dot: C.accent },
+  waiting: { label: "Waiting", fg: C.warn, bg: C.warnBg, dot: C.warn },
+  blocked: { label: "Blocked", fg: C.danger, bg: C.dangerBg, dot: C.danger },
+  done: { label: "Done", fg: C.forest, bg: C.forestBg, dot: C.forest },
 };
 export const S2G = { "to do": "todo", "in progress": "progress", development: "progress", rollout: "progress", "prd preparation": "progress", "mediation setup": "progress", test: "progress", live: "progress", "this week": "progress", waiting: "waiting", blocked: "blocked", done: "done", complete: "done", completed: "done" };
-export const PRIO = { urgent: "#E02D3C", high: "#D9730D", normal: "#2563EB", low: "#6B7180" };
-export const PRIO_BG = { urgent: "#FDECEE", high: "#FFF4E6", normal: "#EAF1FE", low: "#F1F2F6" };
+export const PRIO = { urgent: C.danger, high: C.warn, normal: C.info, low: C.sub };
+export const PRIO_BG = { urgent: C.dangerBg, high: C.warnBg, normal: C.infoBg, low: C.panel };
 export const LISTS = ["Ongoing", "AdOps & Monetization", "Mediation Setup", "App Portfolio", "SDK Integration", "Tests & Experiments"];
 export const STATUSES = ["to do", "in progress", "development", "rollout", "waiting", "blocked", "done"];
 export const PRIORITIES = ["none", "low", "normal", "high", "urgent"];
 export const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 export const TIERS = {
-  T1: { name: "Core", label: "Tier 1", color: "#4E3FD8", bg: "#EFEDFF", drop: 10, respond: "same-day" },
-  T2: { name: "Growth", label: "Tier 2", color: "#0B7A55", bg: "#E6F6F0", drop: 20, respond: "within 24h" },
-  T3: { name: "Stable", label: "Tier 3", color: "#B45309", bg: "#FEF3C7", drop: 30, respond: "within 48h" },
-  T4: { name: "Long-Tail", label: "Tier 4", color: "#5B6172", bg: "#F1F2F6", drop: 40, respond: "within 48h" },
+  T1: { name: "Core", label: "Tier 1", color: C.accentDk, bg: C.accentBg, drop: 10, respond: "same-day" },
+  T2: { name: "Growth", label: "Tier 2", color: C.forest, bg: C.forestBg, drop: 20, respond: "within 24h" },
+  T3: { name: "Stable", label: "Tier 3", color: C.warn, bg: C.warnBg, drop: 30, respond: "within 48h" },
+  T4: { name: "Long-Tail", label: "Tier 4", color: C.sub, bg: C.panel, drop: 40, respond: "within 48h" },
 };
 
 export const money = (n) => { n = Number(n) || 0; return n >= 100000 ? "$" + (n / 1000).toFixed(0) + "K" : n >= 1000 ? "$" + Math.round(n).toLocaleString("en-US") : "$" + n.toFixed(2); };
@@ -54,15 +64,15 @@ export function delta(cur, prev, invert) {
   const v = prev ? ((cur - prev) / prev) * 100 : 0;
   const good = invert ? v < 0 : v > 0;
   const flat = Math.abs(v) < 0.15;
-  return { v, txt: (v >= 0 ? "+" : "") + v.toFixed(1) + "%", arrow: flat ? "→" : v > 0 ? "▲" : "▼", fg: flat ? "#8A90A0" : good ? "#0B7A55" : "#C31C2B", bg: flat ? "#F1F2F6" : good ? "#E6F6F0" : "#FDECEE" };
+  return { v, txt: (v >= 0 ? "+" : "") + v.toFixed(1) + "%", arrow: flat ? "→" : v > 0 ? "▲" : "▼", fg: flat ? C.faint : good ? C.forest : C.danger, bg: flat ? C.panel : good ? C.forestBg : C.dangerBg };
 }
 export const initials = (s) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 export const appInitials = (name) => { const w = name.replace(/[^\w\s&]/g, "").split(/\s+/).filter(Boolean); return ((w[0] || "")[0] + ((w[1] || "")[0] || "")).toUpperCase(); };
-export function appColor(id) { const p = ["#5B4BE8", "#0E9F6E", "#D9730D", "#C2255C", "#0891B2", "#7C3AED", "#B45309", "#2563EB", "#DB2777", "#059669", "#E02D3C", "#6D28D9"]; let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; }
+export function appColor(id) { const p = ["#CFA85A", "#3D7A60", "#8A5876", "#42718C", "#A56848", "#76669E", "#6F8055", "#B68B4B", "#4F7E86", "#9A4F5E", "#60718C", "#8B7342"]; let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; }
 export const member = (name) => {
   const m = D.MEMBERS.find((x) => x.name === name);
   if (m) return { ...m, initials: m.initials || initials(m.name), color: m.color || appColor(m.name) };
-  return { name: name || "Unassigned", initials: name ? initials(name) : "—", color: name ? appColor(name) : "#B4B9C4" };
+  return { name: name || "Unassigned", initials: name ? initials(name) : "—", color: name ? appColor(name) : C.faint2 };
 };
 export const appName = (id) => { const a = D.APPS.find((x) => x.id === id); return a ? a.name : "—"; };
 export const group = (status) => GROUPS[S2G[status] || "todo"];
@@ -85,7 +95,7 @@ export function computeDates(range, cs, ce) {
 }
 
 export const Pill = ({ fg, bg, children }) => <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: fg, background: bg, whiteSpace: "nowrap" }}>{children}</span>;
-export const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 12 };
+export const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 8, boxShadow: C.shadowSoft };
 export const Empty = ({ children }) => <div style={{ ...card, padding: 40, textAlign: "center", color: C.faint }}>{children}</div>;
 
 // Real store icon when the live source resolved one (see liveSource.ts /
@@ -94,7 +104,7 @@ export const Empty = ({ children }) => <div style={{ ...card, padding: 40, textA
 export function AppAvatar({ app, size, radius }) {
   const [broken, setBroken] = useState(false);
   if (app.icon && !broken) {
-    return <img src={app.icon} onError={() => setBroken(true)} alt="" style={{ width: size, height: size, flex: "none", borderRadius: radius, objectFit: "cover", background: "#fff", border: "1px solid #E9EAF0" }} />;
+    return <img src={app.icon} onError={() => setBroken(true)} alt="" style={{ width: size, height: size, flex: "none", borderRadius: radius, objectFit: "cover", background: C.field, border: "1px solid " + C.line }} />;
   }
   return <div style={{ width: size, height: size, flex: "none", borderRadius: radius, background: appColor(app.id), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: Math.round(size * 0.36), fontWeight: 700 }}>{appInitials(app.name)}</div>;
 }

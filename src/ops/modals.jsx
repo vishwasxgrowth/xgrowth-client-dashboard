@@ -55,10 +55,10 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
   const metaRow = { display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "center", padding: "7px 0" };
 
   return (
-    <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "6vh 8vw", zIndex: 30 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "84vw", height: "86vh", background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
+    <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "center", justifyContent: "center", padding: "6vh 8vw", zIndex: 30 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "84vw", height: "86vh", background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 20px", borderBottom: "1px solid " + C.line }}>
-          <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || "#5B4BE8" }}>{ot.status}</span>
+          <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || C.accent }}>{ot.status}</span>
           <span style={{ fontSize: 12, color: C.faint2 }}>{ot.list}</span>
           {ot.url && <a href={ot.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
           <div style={{ flex: 1 }} />
@@ -70,16 +70,16 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
           <div style={{ overflow: "auto", padding: "20px 24px" }}>
             <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>{ot.name}</div>
             <div style={{ borderTop: "1px solid " + C.line, borderBottom: "1px solid " + C.line, marginBottom: 18 }}>
-              <div style={metaRow}><span style={lbl}>Status</span><select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff", maxWidth: 260 }}>{statusOpts.map((sn) => <option key={sn}>{sn}</option>)}</select></div>
-              <div style={metaRow}><span style={lbl}>Assignees</span><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || "#B4B9C4", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ color: C.faint2, fontSize: 13 }}>Unassigned</span>}</div></div>
+              <div style={metaRow}><span style={lbl}>Status</span><select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: C.field, color: C.ink, maxWidth: 260 }}>{statusOpts.map((sn) => <option key={sn}>{sn}</option>)}</select></div>
+              <div style={metaRow}><span style={lbl}>Assignees</span><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || C.faint2, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ color: C.faint2, fontSize: 13 }}>Unassigned</span>}</div></div>
               <div style={metaRow}><span style={lbl}>Priority</span><span style={{ fontSize: 13, color: ot.priorityColor || C.ink, fontWeight: 600 }}>{ot.priority || "—"}</span></div>
               <div style={metaRow}><span style={lbl}>Dates</span><span style={{ fontSize: 13 }}>{ot.start ? shortDate(ot.start) : "—"} → {ot.due ? shortDate(ot.due) : "—"}</span></div>
-              {ot.tags && ot.tags.length > 0 && <div style={metaRow}><span style={lbl}>Tags</span><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: "#EDEEF2", color: C.sub }}>{t}</span>)}</div></div>}
+              {ot.tags && ot.tags.length > 0 && <div style={metaRow}><span style={lbl}>Tags</span><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: C.panel, color: C.sub }}>{t}</span>)}</div></div>}
             </div>
 
             <div style={{ ...lbl, marginBottom: 8 }}>Description</div>
             {descText ? (codey
-              ? <pre style={{ fontSize: 12, lineHeight: 1.5, background: "#F6F7F9", border: "1px solid " + C.line, borderRadius: 10, padding: 14, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>{descText}</pre>
+              ? <pre style={{ fontSize: 12, lineHeight: 1.5, background: C.panel, color: C.ink, border: "1px solid " + C.line, borderRadius: 8, padding: 14, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>{descText}</pre>
               : <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{descText}</div>
             ) : <div style={{ fontSize: 13, color: C.faint2 }}>{loading ? "Loading…" : "No description"}</div>}
 
@@ -88,7 +88,7 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
                 <div style={{ ...lbl, marginBottom: 8 }}>Fields</div>
                 <div style={{ border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
                   {cfs.map((f, i) => (
-                    <div key={i} style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, padding: "9px 14px", borderTop: i ? "1px solid #F1F2F6" : "none", fontSize: 13 }}>
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, padding: "9px 14px", borderTop: i ? "1px solid " + C.line : "none", fontSize: 13 }}>
                       <span style={{ color: C.sub }}>{f.name}</span>
                       {isUrl(f.value) ? <a href={f.value} target="_blank" rel="noreferrer" style={{ color: C.accent, wordBreak: "break-all" }}>{f.value}</a> : <span style={{ fontWeight: 500 }}>{f.value}</span>}
                     </div>
@@ -100,11 +100,11 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
             {subtasks.length > 0 && (
               <div style={{ marginTop: 20 }}>
                 <div style={{ ...lbl, marginBottom: 8 }}>Subtasks ({subtasks.length})</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{subtasks.map((st) => <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, border: "1px solid " + C.line, borderRadius: 8, padding: "8px 12px" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: st.status?.color || "#9AA0AE" }} />{st.name}<span style={{ flex: 1 }} /><span style={{ fontSize: 11, color: C.faint2 }}>{st.status?.status}</span></div>)}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>{subtasks.map((st) => <div key={st.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, border: "1px solid " + C.line, borderRadius: 8, padding: "8px 12px" }}><span style={{ width: 8, height: 8, borderRadius: 2, background: st.status?.color || C.faint2 }} />{st.name}<span style={{ flex: 1 }} /><span style={{ fontSize: 11, color: C.faint2 }}>{st.status?.status}</span></div>)}</div>
               </div>
             )}
 
-            <button onClick={() => { const target = statusOpts.find((x) => /done|complete|closed/i.test(x)) || "done"; setStatus(doneReal ? statusOpts[0] : target); }} style={{ marginTop: 22, height: 38, padding: "0 18px", borderRadius: 9, border: "none", background: doneReal ? "#F1F2F6" : "#0E9F6E", color: doneReal ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{doneReal ? "Reopen" : "Mark complete"}</button>
+            <button onClick={() => { const target = statusOpts.find((x) => /done|complete|closed/i.test(x)) || "done"; setStatus(doneReal ? statusOpts[0] : target); }} style={{ marginTop: 22, height: 38, padding: "0 18px", borderRadius: 8, border: "none", background: doneReal ? C.panel : C.forest, color: doneReal ? C.sub : "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>{doneReal ? "Reopen" : "Mark complete"}</button>
           </div>
 
           {/* ACTIVITY / COMMENTS (right rail) */}
@@ -116,11 +116,11 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
               {(comments || []).map((c) => (
                 <div key={c.id}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: c.user?.color || "#5B4BE8", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{c.user?.initials || (c.user?.username || "?")[0]}</div>
+                    <div style={{ width: 26, height: 26, borderRadius: "50%", background: c.user?.color || C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700 }}>{c.user?.initials || (c.user?.username || "?")[0]}</div>
                     <b style={{ fontSize: 12.5 }}>{c.user?.username || "User"}</b>
                     <span style={{ fontSize: 11, color: C.faint2 }}>{c.date ? new Date(Number(c.date)).toLocaleString() : ""}</span>
                   </div>
-                  <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", color: C.ink, background: "#fff", border: "1px solid " + C.line, borderRadius: 10, padding: "9px 12px" }}>{c.comment_text || (c.comment || []).map((x) => x.text).join("")}</div>
+                  <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap", color: C.ink, background: C.surface, border: "1px solid " + C.line, borderRadius: 8, padding: "9px 12px" }}>{c.comment_text || (c.comment || []).map((x) => x.text).join("")}</div>
                 </div>
               ))}
             </div>
@@ -133,13 +133,13 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
 
 export function CreateModal({ modal, setModal, commitCreate }) {
   const m = modal, upd = (k) => (e) => setModal((s) => ({ ...s, [k]: e.target.value }));
-  const sel = { width: "100%", height: 34, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: "#fff", marginTop: 4 };
+  const sel = { width: "100%", height: 34, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: C.field, color: C.ink, marginTop: 4 };
   const lbl = { fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 };
   return (
-    <div onClick={() => setModal(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.35)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, background: "#fff", borderRadius: 14, padding: 22, fontFamily: C.sans }}>
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>New task</div>
-        {m.ctxTitle && <div style={{ background: m.ctxBad ? "#FDECEE" : "#E6F6F0", border: "1px solid " + (m.ctxBad ? "#F8D3D7" : "#CBEBDD"), color: m.ctxBad ? "#C31C2B" : "#0B7A55", borderRadius: 9, padding: "8px 12px", marginBottom: 14, fontSize: 12.5 }}><b>{m.ctxTitle}</b> · {m.ctxValue}</div>}
+    <div onClick={() => setModal(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: 460, background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, padding: 22, fontFamily: C.sans, boxShadow: C.shadow }}>
+        <div className="xg-display" style={{ fontSize: 23, fontWeight: 620, marginBottom: 14 }}>New task</div>
+        {m.ctxTitle && <div style={{ background: m.ctxBad ? C.dangerBg : C.forestBg, border: "1px solid " + (m.ctxBad ? C.danger : C.forest), color: m.ctxBad ? C.danger : C.forest, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 12.5 }}><b>{m.ctxTitle}</b> · {m.ctxValue}</div>}
         <div style={{ marginBottom: 12 }}><div style={lbl}>Task name</div><input value={m.name} onChange={upd("name")} style={sel} placeholder="What needs doing?" /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
           <div><div style={lbl}>List</div><select value={m.list} onChange={upd("list")} style={sel}>{LISTS.map((l) => <option key={l}>{l}</option>)}</select></div>
@@ -149,8 +149,8 @@ export function CreateModal({ modal, setModal, commitCreate }) {
           <div><div style={lbl}>Due</div><input type="date" value={m.due} onChange={upd("due")} style={sel} /></div>
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button onClick={() => setModal(null)} style={{ height: 36, padding: "0 16px", borderRadius: 9, border: "1px solid " + C.line, background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.sub }}>Cancel</button>
-          <button onClick={commitCreate} style={{ height: 36, padding: "0 18px", borderRadius: 9, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Create task</button>
+          <button onClick={() => setModal(null)} style={{ height: 36, padding: "0 16px", borderRadius: 8, border: "1px solid " + C.line, background: C.field, cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.sub }}>Cancel</button>
+          <button onClick={commitCreate} style={{ height: 36, padding: "0 18px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Create task</button>
         </div>
       </div>
     </div>
@@ -219,8 +219,8 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
     ["Sessions", "app sessions in the window", "Not wired", () => "n/a", null, "context"],
     ["D1 retention", "needs the analytics SDK", "Not wired", () => "n/a", null, "higher better"],
   ];
-  const srcColor = { AdMob: ["#EAF0FF", "#3A5BD0"], Derived: ["#F1F2F6", "#5B6172"], Firebase: ["#FFF1E6", "#B45309"], "Not wired": ["#F6E9E9", "#B23B3B"] };
-  const chg = (v, b, tone) => { const d = pctD(v, b); const up = d >= 0; const good = tone === "context" ? null : up; const col = good == null ? C.faint2 : good ? "#0B7A55" : "#C31C2B"; return <span style={{ color: col, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{d >= 0 ? "▲ +" : "▼ "}{d.toFixed(1)}%</span>; };
+  const srcColor = { AdMob: [C.infoBg, C.info], Derived: [C.panel, C.sub], Firebase: [C.warnBg, C.warn], "Not wired": [C.dangerBg, C.danger] };
+  const chg = (v, b, tone) => { const d = pctD(v, b); const up = d >= 0; const good = tone === "context" ? null : up; const col = good == null ? C.faint2 : good ? C.forest : C.danger; return <span style={{ color: col, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{d >= 0 ? "▲ +" : "▼ "}{d.toFixed(1)}%</span>; };
 
   const MetricTable = ({ title, rows }) => (
     <>
@@ -232,7 +232,7 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
         let change = <span style={{ color: C.faint2 }}>n/a</span>;
         try { if (get && bM && vM) change = chg(get(vM.total), get(bM.total), reading); } catch (e) {}
         return (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid #F1F2F6", fontSize: 13 }}>
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid " + C.line, fontSize: 13 }}>
             <div><div style={{ fontWeight: 600 }}>{name}</div>{subd && <div style={{ fontSize: 11, color: C.faint2 }}>{subd}</div>}</div>
             <span style={{ justifySelf: "start", fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: (srcColor[src] || srcColor.Derived)[0], color: (srcColor[src] || srcColor.Derived)[1] }}>{src}</span>
             <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{bVal}</span>
@@ -251,10 +251,10 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
         <b style={{ fontSize: 12.5 }}>{arm ? arm.label : "—"}</b>
         <span style={{ fontSize: 10.5, color: C.faint2 }}>{tone} arm</span>
         <div style={{ flex: 1 }} />
-        {arm && (arm.error ? <span style={{ fontSize: 10.5, fontWeight: 700, color: "#C31C2B", background: "#FDECEE", padding: "2px 7px", borderRadius: 6 }}>invalid JSON</span>
-          : <span style={{ fontSize: 10.5, fontWeight: 700, color: "#0B7A55", background: "#E6F6F0", padding: "2px 7px", borderRadius: 6 }}>✓ valid</span>)}
+        {arm && (arm.error ? <span style={{ fontSize: 10.5, fontWeight: 700, color: C.danger, background: C.dangerBg, padding: "2px 7px", borderRadius: 6 }}>invalid JSON</span>
+          : <span style={{ fontSize: 10.5, fontWeight: 700, color: C.forest, background: C.forestBg, padding: "2px 7px", borderRadius: 6 }}>✓ valid</span>)}
       </div>
-      {arm && arm.error && <div style={{ fontSize: 11.5, color: "#C31C2B", padding: "8px 14px", background: "#FEF6F6" }}>{arm.error}</div>}
+      {arm && arm.error && <div style={{ fontSize: 11.5, color: C.danger, padding: "8px 14px", background: C.dangerBg }}>{arm.error}</div>}
       <pre style={{ margin: 0, padding: 14, fontSize: 11.5, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 320, overflow: "auto" }}>{arm ? (arm.json ? JSON.stringify(arm.json, null, 2) : arm.raw) : "No config found"}</pre>
     </div>
   );
@@ -264,9 +264,9 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
       <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, marginBottom: 4 }}>{label} · per ad unit</div>
       <div style={{ border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
         {m.units.map((u, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: i ? "1px solid #F1F2F6" : "none", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: i ? "1px solid " + C.line : "none", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.adUnit.split("/").pop()}</span>
-            <span style={{ textAlign: "right", color: u.found ? C.ink : "#C0651C" }}>{u.found ? money(u.revenue) : "no data"}</span>
+            <span style={{ textAlign: "right", color: u.found ? C.ink : C.warn }}>{u.found ? money(u.revenue) : "no data"}</span>
             <span style={{ textAlign: "right" }}>{u.found ? compact(u.impressions) : "—"}</span>
             <span style={{ textAlign: "right" }}>{u.found ? "$" + u.ecpm.toFixed(2) : "—"}</span>
           </div>
@@ -279,12 +279,12 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
   );
 
   return (
-    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: "rgba(20,22,28,.45)", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 6vw", zIndex: 30, overflow: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "88vw", maxWidth: 1060, background: "#fff", borderRadius: 16, boxShadow: "0 24px 70px rgba(0,0,0,.3)", fontFamily: C.sans }}>
+    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 6vw", zIndex: 30, overflow: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "88vw", maxWidth: 1060, background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, fontFamily: C.sans }}>
         {/* header */}
-        <div style={{ padding: "20px 24px", borderBottom: "1px solid " + C.line, background: "linear-gradient(180deg,#FBFBFE,#fff)" }}>
+        <div style={{ padding: "20px 24px", borderBottom: "1px solid " + C.line, background: C.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: seed.statusColor || "#5B4BE8" }}>{seed.status}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: seed.statusColor || C.accent }}>{seed.status}</span>
             <span style={{ fontSize: 12, color: C.faint2 }}>{seed.list} · {seed.start ? shortDate(seed.start) : "—"} → {seed.due ? shortDate(seed.due) : "—"}</span>
             {seed.url && <a href={seed.url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: C.accent }}>Open in ClickUp ↗</a>}
             <div style={{ flex: 1 }} />
@@ -292,11 +292,11 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
           </div>
           <div style={{ fontSize: 13, fontWeight: 600, color: C.faint, letterSpacing: ".04em", textTransform: "uppercase" }}>Overall lift · Estimated earnings</div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12, margin: "4px 0 2px" }}>
-            <div style={{ fontSize: 40, fontWeight: 700, color: !anyData ? C.faint2 : lift >= 0 ? "#0B7A55" : "#C31C2B", fontVariantNumeric: "tabular-nums" }}>{!anyData ? "—" : (lift >= 0 ? "+" : "") + lift.toFixed(1) + "%"}</div>
-            {anyData && <div style={{ fontSize: 16, color: lift >= 0 ? "#0B7A55" : "#C31C2B", fontVariantNumeric: "tabular-nums" }}>{absD >= 0 ? "+" : ""}{money(absD)}</div>}
+            <div style={{ fontSize: 40, fontWeight: 700, color: !anyData ? C.faint2 : lift >= 0 ? C.forest : C.danger, fontVariantNumeric: "tabular-nums" }}>{!anyData ? "—" : (lift >= 0 ? "+" : "") + lift.toFixed(1) + "%"}</div>
+            {anyData && <div style={{ fontSize: 16, color: lift >= 0 ? C.forest : C.danger, fontVariantNumeric: "tabular-nums" }}>{absD >= 0 ? "+" : ""}{money(absD)}</div>}
           </div>
           <div style={{ fontSize: 13, color: C.sub }}>{!variant ? "Add a variant config to compare against the baseline." : !anyData ? "AdMob returned no data for these ad units in the window." : "Test config (" + variant.label + ") is " + (lift >= 0 ? "outperforming" : "underperforming") + " the baseline on revenue."}</div>
-          <div style={{ marginTop: 14 }}><button onClick={() => { setTestId(null); openCreate && openCreate({ name: "Follow-up: " + seed.name, list: "Tests & Experiments", assignee: seed.assignee, priority: "high" }); }} style={{ height: 34, padding: "0 16px", borderRadius: 9, border: "none", background: C.accent, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Create follow-up task</button></div>
+          <div style={{ marginTop: 14 }}><button onClick={() => { setTestId(null); openCreate && openCreate({ name: "Follow-up: " + seed.name, list: "Tests & Experiments", assignee: seed.assignee, priority: "high" }); }} style={{ height: 34, padding: "0 16px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>Create follow-up task</button></div>
         </div>
 
         <div style={{ padding: 24 }}>
@@ -304,7 +304,7 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
             <b style={{ fontSize: 14 }}>Config under test</b>
             <span style={{ fontSize: 11.5, color: C.faint2 }}>parsed from the ticket description · {arms.length} arm{arms.length === 1 ? "" : "s"}</span>
             <div style={{ flex: 1 }} />
-            {variants.length > 1 && <select value={vi} onChange={(e) => setVi(Number(e.target.value))} style={{ height: 30, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5 }}>{variants.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>}
+            {variants.length > 1 && <select value={vi} onChange={(e) => setVi(Number(e.target.value))} style={{ height: 30, borderRadius: 8, border: "1px solid " + C.line, background: C.field, color: C.ink, padding: "0 8px", fontSize: 12.5 }}>{variants.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>}
           </div>
           {arms.length === 0 ? <Empty>No JSON config found in the description.</Empty> : (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
@@ -326,7 +326,7 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
                 <MetricTable title="User level" rows={rowsUser} />
               </div>
             )}
-            {err && <div style={{ marginTop: 10, fontSize: 12, color: "#C0651C" }}>⚠ {err}</div>}
+            {err && <div style={{ marginTop: 10, fontSize: 12, color: C.warn }}>⚠ {err}</div>}
             {!loading && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}><UnitRows m={bM} label={baseline && baseline.label} /><UnitRows m={vM} label={variant && variant.label} /></div>}
           </div>
         </div>
