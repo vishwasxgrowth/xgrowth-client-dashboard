@@ -3,6 +3,8 @@ import { useMemo, useState } from "react";
 import D from "../activeData";
 import { C, GROUPS, LISTS, card, Pill, Empty, groupId } from "./theme";
 
+const DEFAULT_TASK_LIST = "Mediation Setup";
+
 function listHealth(items) {
   const open = items.filter((t) => groupId(t.status) !== "done");
   const overdue = open.filter((t) => t.due && t.due < D.TODAY).length;
@@ -23,17 +25,25 @@ function GroupedTaskList({ items, taskView, statuses }) {
   const known = new Map(statuses.map((s) => [s.name, s]));
   for (const t of items) if (!known.has(t.status)) known.set(t.status, { name: t.status, color: t.statusColor || C.faint2 });
   const groups = [...known.values()].map((st) => ({ ...st, list: items.filter((t) => t.status === st.name) })).filter((g) => g.list.length);
+  const [closed, setClosed] = useState(() => new Set(groups.filter((g) => groupId(g.name) === "done").map((g) => g.name)));
+  const toggle = (name) => setClosed((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    return next;
+  });
   if (!groups.length) return <Empty>No tasks match.</Empty>;
   return (
     <div style={{ ...card, overflow: "hidden" }}>
       {groups.map((g) => (
         <div key={g.name}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.panel, borderBottom: "1px solid " + C.line }}>
+          <button onClick={() => toggle(g.name)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.panel, border: 0, borderBottom: "1px solid " + C.line, color: C.ink, cursor: "pointer", textAlign: "left" }}>
+            <span style={{ color: C.faint, fontSize: 12, width: 14 }}>{closed.has(g.name) ? "▸" : "▾"}</span>
             <span style={{ width: 9, height: 9, borderRadius: "50%", background: g.color }} />
             <b style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".04em" }}>{g.name}</b>
             <span style={{ fontSize: 11, color: "#fff", background: g.color, borderRadius: 20, padding: "0 7px" }}>{g.list.length}</span>
-          </div>
-          {g.list.map((t) => { const tv = taskView(t); const overdue = t.due && t.due < D.TODAY && groupId(t.status) !== "done"; return (
+          </button>
+          {!closed.has(g.name) && g.list.map((t) => { const tv = taskView(t); const overdue = t.due && t.due < D.TODAY && groupId(t.status) !== "done"; return (
             <div key={t.id} onClick={tv.open} style={{ display: "grid", gridTemplateColumns: "26px minmax(0,1fr) 190px 150px", gap: 12, alignItems: "center", padding: "11px 14px", borderBottom: "1px solid " + C.line, borderLeft: "3px solid " + (t.statusColor || g.color), cursor: "pointer" }}>
               <div onClick={tv.toggle} style={{ width: 18, height: 18, borderRadius: 5, border: "1.5px solid " + tv.checkBd, background: tv.checkBg, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11 }}>{tv.check}</div>
               <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 550, color: tv.nfg, textDecoration: tv.strike, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div><div style={{ fontSize: 11, color: C.faint2 }}>{t.list}</div></div>
@@ -52,23 +62,29 @@ function GroupedTaskList({ items, taskView, statuses }) {
 // to just the tasks matched to that app.
 export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, taskAppMap, taskLoadState }) {
   const [tview, setTview] = useState("list");
-  const [tlist, setTlist] = useState("All lists");
+  const [tlist, setTlist] = useState(DEFAULT_TASK_LIST);
   const [tassignee, setTassignee] = useState("All assignees");
   const [tq, setTq] = useState("");
   const tasks = useMemo(() => (scopeApp ? allTasks.filter((t) => (taskAppMap && taskAppMap.get(t.id)) === scopeApp) : allTasks), [allTasks, scopeApp, taskAppMap]);
   const meta = D.LISTS_META;
-  const listNames = meta ? Object.keys(meta) : LISTS;
-  const [quick, setQuick] = useState(null);
-  const [statusFilter, setStatusFilter] = useState(null);
+  const listNames = useMemo(() => {
+    const available = meta ? Object.keys(meta) : LISTS;
+    const ordered = LISTS.filter((name) => available.includes(name));
+    return ordered.length ? ordered : available;
+  }, [meta]);
+  const activeList = listNames.includes(tlist) ? tlist : (listNames[0] || DEFAULT_TASK_LIST);
   const [dragId, setDragId] = useState(null);
   const [overCol, setOverCol] = useState(null);
   const tqq = tq.trim().toLowerCase();
 
-  const scope = tasks.filter((t) => (tlist === "All lists" || t.list === tlist) && (tassignee === "All assignees" || t.assignee === tassignee) && (!tqq || t.name.toLowerCase().includes(tqq)));
-  const base = quick === "overdue" ? scope.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done")
-    : quick === "today" ? scope.filter((t) => t.due === D.TODAY && groupId(t.status) !== "done")
-    : quick === "open" ? scope.filter((t) => groupId(t.status) !== "done") : scope;
-  const filtered = statusFilter ? base.filter((t) => t.status === statusFilter) : base;
+  const listScope = tasks.filter((t) => t.list === activeList && (!tqq || t.name.toLowerCase().includes(tqq)));
+  const assigneeOptions = useMemo(() => {
+    return [...new Set(listScope.map((t) => t.assignee).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  }, [listScope]);
+  const activeAssignee = assigneeOptions.includes(tassignee) ? tassignee : "All assignees";
+  const scope = listScope.filter((t) => activeAssignee === "All assignees" || t.assignee === activeAssignee);
+  const base = scope;
+  const filtered = base;
 
   // Real ClickUp status metadata, when available, is authoritative — never
   // the demo-only 5-bucket todo/progress/waiting/blocked/done scheme, which
@@ -80,17 +96,14 @@ export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, 
     for (const list of Object.values(meta)) for (const s of list) if (!map.has(s.name)) map.set(s.name, s);
     return [...map.values()];
   }, [meta]);
-  const activeStatuses = useReal ? ((tlist !== "All lists" && meta[tlist]) ? meta[tlist] : allRealStatuses) : null;
+  const activeStatuses = useReal ? (meta[activeList] || allRealStatuses) : null;
   const statusList = useReal ? activeStatuses.map((s) => ({ name: s.name, color: s.color || C.faint2 })) : [...new Map(base.map((t) => [t.status, { name: t.status, color: t.statusColor || C.faint2 }])).values()];
-  const statusCount = (name) => base.filter((t) => t.status === name).length;
 
   const columns = useReal ? activeStatuses.map((s) => ({ label: s.name, color: s.color || C.faint2, key: s.name })) : ["todo", "progress", "waiting", "blocked", "done"].map((gid) => ({ label: GROUPS[gid].label, color: GROUPS[gid].dot, key: gid }));
   const colTasks = (col) => filtered.filter((t) => (useReal ? t.status === col.key : groupId(t.status) === col.key));
   const order = { blocked: 0, progress: 1, waiting: 2, todo: 3, done: 4 };
-  const rows = filtered.slice().sort((a, b) => order[groupId(a.status)] - order[groupId(b.status)] || (a.due || "9").localeCompare(b.due || "9")).map(taskView);
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: C.field, color: C.ink };
   const drop = (k) => { if (dragId && useReal) onMove(dragId, k); setDragId(null); setOverCol(null); };
-  const chip = (on, color, bg) => ({ border: "1px solid " + (on ? color : C.line), background: on ? bg : C.field, color: on ? color : C.sub, cursor: "pointer", fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 20, display: "inline-flex", alignItems: "center" });
 
   if (!scopeApp && taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp tasks...</Empty>;
   if (!scopeApp && taskLoadState === "error" && !tasks.length) return <Empty>ClickUp tasks are unavailable.</Empty>;
@@ -99,19 +112,11 @@ export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, 
     <>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", background: C.panel, border: "1px solid " + C.line, borderRadius: 8, padding: 3 }}>{[["list", "List"], ["board", "Board"]].map(([id, label]) => <button key={id} onClick={() => setTview(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: tview === id ? 650 : 550, padding: "5px 14px", borderRadius: 6, background: tview === id ? C.surface : "transparent", color: tview === id ? C.ink : C.sub }}>{label}</button>)}</div>
-        <select value={tlist} onChange={(e) => { setTlist(e.target.value); setStatusFilter(null); }} style={sel}>{["All lists", ...listNames].map((l) => <option key={l}>{l}</option>)}</select>
+        <select value={activeList} onChange={(e) => { setTlist(e.target.value); setTassignee("All assignees"); }} style={sel}>{listNames.map((l) => <option key={l}>{l}</option>)}</select>
         {useReal && (() => { const h = listHealth(scope); return <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 20, color: h.color, background: h.bg }}>{h.icon} {h.label}</span>; })()}
-        <select value={tassignee} onChange={(e) => setTassignee(e.target.value)} style={sel}>{["All assignees", ...D.MEMBERS.map((m) => m.name)].map((l) => <option key={l}>{l}</option>)}</select>
+        <select value={activeAssignee} onChange={(e) => setTassignee(e.target.value)} style={sel}>{["All assignees", ...assigneeOptions].map((l) => <option key={l}>{l}</option>)}</select>
         <input value={tq} onChange={(e) => setTq(e.target.value)} placeholder="Filter tasks…" style={{ ...sel, width: 180 }} />
-        {quick && <button onClick={() => setQuick(null)} style={{ border: "none", background: "none", color: C.accent, cursor: "pointer", fontSize: 12 }}>Clear filter</button>}
       </div>
-
-      {tview === "list" && (
-        <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-          <button onClick={() => setStatusFilter(null)} style={chip(!statusFilter, C.accent, C.accentBg)}>All · {base.length}</button>
-          {statusList.map((st) => <button key={st.name} onClick={() => setStatusFilter(statusFilter === st.name ? null : st.name)} style={chip(statusFilter === st.name, st.color, st.color + "22")}><span style={{ width: 8, height: 8, borderRadius: "50%", background: st.color, marginRight: 6 }} />{st.name} · {statusCount(st.name)}</button>)}
-        </div>
-      )}
 
       {tview === "list" ? (<GroupedTaskList items={filtered} taskView={taskView} statuses={statusList} />) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(" + columns.length + ",minmax(210px,1fr))", gap: 12, alignItems: "start", overflowX: "auto" }}>

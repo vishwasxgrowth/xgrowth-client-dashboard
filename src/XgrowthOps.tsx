@@ -21,8 +21,17 @@ const SAVE_VERSION = 1;
 const THEME_KEY = "xgrowth-theme.v1";
 
 const NAV = [
-  { id: "dashboard", label: "Dashboard" }, { id: "trends", label: "Trends" }, { id: "daily", label: "Daily Reports" }, { id: "apps", label: "Applications" },
-  { id: "tests", label: "Tests & Experiments" }, { id: "tasks", label: "Tasks" }, { id: "settings", label: "Settings" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "trends", label: "Trends" },
+  { id: "daily", label: "Daily Reports" },
+  { id: "apps", label: "Applications" },
+  { id: "tests", label: "Tests & Experiments" },
+  { id: "tasks", label: "Tasks" },
+  { id: "settings", label: "Settings" },
+];
+const NAV_GROUPS = [
+  { id: "reports", items: NAV.slice(0, 3) },
+  { id: "workspace", items: NAV.slice(3) },
 ];
 
 function readInitialTheme() {
@@ -49,6 +58,11 @@ function readSavedWorkspace() {
 }
 
 const errText = (e) => String((e && e.message) || e || "Unknown error");
+const appLabelFromContext = (value) => {
+  if (!value) return "— none —";
+  const fromId = appName(value);
+  return fromId !== "—" ? fromId : String(value);
+};
 
 function StatusNotice({ sourceError, taskLoadState, taskError, page, onRetry }) {
   const workspacePage = page === "tasks" || page === "tests" || page === "settings";
@@ -225,8 +239,8 @@ export default function XgrowthOps() {
   };
 
   const openCreate = (ctx) => setModal({
-    name: ctx && ctx.name ? ctx.name : "", list: (ctx && ctx.list) || "Ongoing", app: ctx && ctx.app ? appName(ctx.app) : "— none —",
-    assignee: (ctx && ctx.assignee) || "Vishwas HD", priority: (ctx && ctx.priority) || "high", due: (ctx && ctx.due) || D.TODAY,
+    name: ctx && ctx.name ? ctx.name : "", list: (ctx && ctx.list) || "Ongoing", app: appLabelFromContext(ctx && ctx.app),
+    assignee: (ctx && ctx.assignee) || "Unassigned", priority: (ctx && ctx.priority) || "high", due: (ctx && ctx.due) || D.TODAY,
     ctxTitle: ctx && ctx.ctxTitle, ctxValue: ctx && ctx.ctxValue, ctxBad: !!(ctx && ctx.ctxBad),
   });
   const commitCreate = () => { const m = modal; if (!m) return; const app = D.APPS.find((a) => a.name === m.app); const t = { id: "local-" + Math.random().toString(36).slice(2, 10), name: m.name || "Untitled task", status: "to do", assignee: m.assignee === "Unassigned" ? null : m.assignee, priority: m.priority === "none" ? null : m.priority, due: m.due || null, tags: [], list: m.list, app: app ? app.id : null }; setTasks((ts) => { const next = [t, ...ts]; persist(next); return next; }); setModal(null); flash("Saved locally; ClickUp task creation is not connected yet"); };
@@ -262,14 +276,18 @@ export default function XgrowthOps() {
         <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
         </button>
-        {NAV.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
-          <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
-            style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 8, border: on ? "1px solid " + C.line : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 680 : 520, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
-            <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
-            {!collapsed && <span>{n.label}</span>}
-            {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: C.dangerBg, color: C.danger }}>{overdueAll.length}</span></>}
-            {collapsed && badge && <span style={{ position: "absolute", top: 6, right: 9, width: 7, height: 7, borderRadius: "50%", background: C.danger }} />}
-          </button>); })}
+        {NAV_GROUPS.map((navGroup) => (
+          <div key={navGroup.id} style={{ border: navGroup.id === "reports" ? "1px solid " + C.line : "1px solid transparent", background: navGroup.id === "reports" ? C.panel : "transparent", borderRadius: 8, padding: navGroup.id === "reports" ? 4 : 0, marginBottom: navGroup.id === "reports" ? 12 : 2 }}>
+            {navGroup.items.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
+              <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
+                style={{ position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 7, border: on ? "1px solid " + C.line : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 680 : 520, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
+                <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
+                {!collapsed && <span>{n.label}</span>}
+                {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: C.dangerBg, color: C.danger }}>{overdueAll.length}</span></>}
+                {collapsed && badge && <span style={{ position: "absolute", top: 6, right: 9, width: 7, height: 7, borderRadius: "50%", background: C.danger }} />}
+              </button>); })}
+          </div>
+        ))}
         <div style={{ flex: 1 }} />
         {!collapsed && <div style={{ fontSize: 10.5, color: C.faint2, padding: "8px 10px", whiteSpace: "nowrap" }}>{clickupLabel}</div>}
       </div>
@@ -279,7 +297,7 @@ export default function XgrowthOps() {
           <div><div className="xg-display" style={{ fontSize: 24, fontWeight: 620 }}>{pageTitle}</div>{page === "tasks" && <div style={{ fontSize: 11.5, color: C.faint }}>{clickupLabel}</div>}</div>
           <div style={{ flex: 1 }} />
           <button onClick={() => openCreate(null)} style={{ height: 34, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>
-          <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />
+          {page === "apps" && <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />}
           <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>
 

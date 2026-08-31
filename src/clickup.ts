@@ -38,9 +38,10 @@ function mapTask(t, listName) {
     commentCount: t.comment_count || 0,
   };
 }
-export async function getFolderData(folderId) {
+export async function getFolderData(folderId, allowedListNames) {
   const folder = await cu("/folder/" + folderId);
-  const lists = folder.lists || [];
+  const allow = allowedListNames ? new Set([...allowedListNames].map((name) => String(name).toLowerCase())) : null;
+  const lists = (folder.lists || []).filter((list) => !allow || allow.has(String(list.name || "").toLowerCase()));
   const listsMeta = {}; const tasks = [];
   for (const l of lists) {
     listsMeta[l.name] = (l.statuses || []).slice().sort((a, b) => a.orderindex - b.orderindex).map((s) => ({ name: s.status, color: s.color, type: s.type }));

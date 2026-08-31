@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as demo from "./data";
 import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
-import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus, getWorkspaceMembers } from "./clickup";
+import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
 import { loadTimeseries } from "./timeseriesSource";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -10,7 +10,27 @@ const rd = (d) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: 
 const MS = 86400000;
 
 const tierForRevenue = (rev30) => rev30 >= 15000 ? "Tier 1" : rev30 >= 3000 ? "Tier 2" : rev30 >= 500 ? "Tier 3" : "Tier 4";
-const sourceError = (e) => String((e && e.message) || e || "Unknown error");
+const WORKFLOW_LISTS = new Set(["Mediation Setup", "SDK Integration", "Tests & Experiments", "Ongoing"]);
+
+function activeMembersFromTasks(tasks) {
+  const map = new Map();
+  for (const task of tasks || []) {
+    if (!WORKFLOW_LISTS.has(task.list)) continue;
+    const assignees = task.assignees && task.assignees.length
+      ? task.assignees
+      : (task.assignee ? [{ name: task.assignee, color: null, initials: null }] : []);
+    for (const assignee of assignees) {
+      const name = assignee && assignee.name;
+      if (!name || map.has(name)) continue;
+      map.set(name, {
+        name,
+        initials: assignee.initials || null,
+        color: assignee.color || null,
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
 
 function latestNextDay(ts) {
   const latest = ts && ts.dates && ts.dates[ts.dates.length - 1];
@@ -89,15 +109,10 @@ function appsFromTimeseries(ts) {
 }
 
 async function loadClickUpWorkspace(folderId) {
-  const { listsMeta, tasks } = await getFolderData(folderId);
-  let members = demo.MEMBERS;
-  let membersError = null;
-  try {
-    const real = await getWorkspaceMembers();
-    if (real.length) members = real;
-  } catch (e) {
-    membersError = sourceError(e);
-  }
+  const { listsMeta, tasks } = await getFolderData(folderId, WORKFLOW_LISTS);
+  const activeMembers = activeMembersFromTasks(tasks);
+  const members = activeMembers.length ? activeMembers : demo.MEMBERS;
+  const membersError = activeMembers.length ? null : "No assigned ClickUp members found in the loaded workflow sections";
   return { tasks, listsMeta, members, membersError };
 }
 
@@ -182,25 +197,16 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
   };
   let TASKS = demo.TASKS; let LISTS_META = null; let TASKS_SOURCE = "demo-fallback";
   try {
-    const { listsMeta, tasks } = await getFolderData(folderId);
+    const { listsMeta, tasks } = await getFolderData(folderId, WORKFLOW_LISTS);
     // An empty list is a legitimate ClickUp answer (e.g. an empty folder), not
     // a failure — only an actual fetch error should fall back to demo data.
     TASKS = tasks; LISTS_META = listsMeta; TASKS_SOURCE = "clickup";
   } catch (e) {
     console.warn("[clickup] could not load tasks, falling back to demo data:", e);
   }
-  // Real members, not the 4-person demo roster — that list included a person
-  // who isn't even in this workspace, so anyone else assigned in ClickUp fell
-  // back to a generic gray avatar regardless of who they actually are.
-  let MEMBERS = demo.MEMBERS;
-  let MEMBERS_ERROR = null;
-  try {
-    const real = await getWorkspaceMembers();
-    if (real.length) MEMBERS = real;
-  } catch (e) {
-    MEMBERS_ERROR = sourceError(e);
-    console.warn("[clickup] could not load workspace members, using the demo roster:", e);
-  }
+  const activeMembers = activeMembersFromTasks(TASKS);
+  const MEMBERS = activeMembers.length ? activeMembers : demo.MEMBERS;
+  const MEMBERS_ERROR = activeMembers.length ? null : "No assigned ClickUp members found in the loaded workflow sections";
   return {
     IS_LIVE: true,
     SOURCE_MODE: "live-admob",
