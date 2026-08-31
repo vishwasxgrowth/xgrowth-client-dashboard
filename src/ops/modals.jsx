@@ -135,6 +135,8 @@ export function CreateModal({ modal, setModal, commitCreate }) {
   const m = modal, upd = (k) => (e) => setModal((s) => ({ ...s, [k]: e.target.value }));
   const sel = { width: "100%", height: 34, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: C.field, color: C.ink, marginTop: 4 };
   const lbl = { fontSize: 11, textTransform: "uppercase", color: C.faint, fontWeight: 600 };
+  const appOptions = ["— none —", ...D.APPS.map((a) => a.name)];
+  if (m.app && !appOptions.includes(m.app)) appOptions.splice(1, 0, m.app);
   return (
     <div onClick={() => setModal(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 30 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: 460, background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, padding: 22, fontFamily: C.sans, boxShadow: C.shadow }}>
@@ -143,7 +145,7 @@ export function CreateModal({ modal, setModal, commitCreate }) {
         <div style={{ marginBottom: 12 }}><div style={lbl}>Task name</div><input value={m.name} onChange={upd("name")} style={sel} placeholder="What needs doing?" /></div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
           <div><div style={lbl}>List</div><select value={m.list} onChange={upd("list")} style={sel}>{LISTS.map((l) => <option key={l}>{l}</option>)}</select></div>
-          <div><div style={lbl}>App</div><select value={m.app} onChange={upd("app")} style={sel}>{["— none —", ...D.APPS.map((a) => a.name)].map((l) => <option key={l}>{l}</option>)}</select></div>
+          <div><div style={lbl}>App</div><select value={m.app} onChange={upd("app")} style={sel}>{appOptions.map((l) => <option key={l}>{l}</option>)}</select></div>
           <div><div style={lbl}>Assignee</div><select value={m.assignee} onChange={upd("assignee")} style={sel}>{["Unassigned", ...D.MEMBERS.map((x) => x.name)].map((l) => <option key={l}>{l}</option>)}</select></div>
           <div><div style={lbl}>Priority</div><select value={m.priority} onChange={upd("priority")} style={sel}>{PRIORITIES.map((l) => <option key={l}>{l}</option>)}</select></div>
           <div><div style={lbl}>Due</div><input type="date" value={m.due} onChange={upd("due")} style={sel} /></div>
