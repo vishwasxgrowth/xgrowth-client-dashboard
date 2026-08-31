@@ -1,10 +1,12 @@
 // @ts-nocheck
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import D from "../activeData";
 import { tsAggregate, tsAppNames } from "../timeseriesSource";
-import { C, TIERS, card, Empty, AppAvatar, compact, money, money2, money4, pct100, delta, groupId, shortDate } from "./theme";
+import { C, TIERS, card, Empty, compact, money, money2, money4, pct100, delta, groupId } from "./theme";
 
 const MIN_DAILY_REVENUE = 50;
+const RECENT_TREND_DAYS = 10;
+const TIER_RANK = { T1: 1, T2: 2, T3: 3, T4: 4 };
 
 function metricDelta(cur, prev, invert) {
   return cur != null && prev ? delta(cur || 0, prev || 0, invert) : { v: null, txt: "n/a", arrow: "", fg: C.faint, bg: C.panel };
@@ -32,6 +34,33 @@ function rangeAt(ts, appName, endIdx, days) {
   return tsAggregate(ts, appName, a, endIdx);
 }
 
+function valueOf(row, key) {
+  if (!row) return null;
+  if (key === "arpdav") return row.dav ? row.arpdav : null;
+  if (key === "matchRate" || key === "showRate") return row[key] || 0;
+  return row[key] != null ? row[key] : null;
+}
+
+function average(xs) {
+  const clean = xs.filter((x) => x != null && Number.isFinite(x));
+  return clean.length ? clean.reduce((a, b) => a + b, 0) / clean.length : null;
+}
+
+function recentMetricTrend(ts, appName, key) {
+  const n = ts.dates.length;
+  const start = Math.max(0, n - RECENT_TREND_DAYS);
+  const values = [];
+  for (let i = start; i < n; i++) values.push(valueOf(at(ts, appName, i), key));
+  const clean = values.filter((x) => x != null && Number.isFinite(x));
+  if (clean.length < 6) {
+    const latest = rangeAt(ts, appName, n - 1, 7);
+    const previous = rangeAt(ts, appName, n - 8, 7);
+    return { days: 7, change: metricDelta(valueOf(latest, key), valueOf(previous, key)) };
+  }
+  const split = Math.floor(clean.length / 2);
+  return { days: clean.length, change: metricDelta(average(clean.slice(split)), average(clean.slice(0, split))) };
+}
+
 function compareBundle(ts, appName) {
   const latestIdx = ts.dates.length - 1;
   const latestDate = ts.dates[latestIdx];
@@ -45,16 +74,11 @@ function compareBundle(ts, appName) {
   const week = rangeAt(ts, appName, latestIdx, 7);
   const priorWeek = rangeAt(ts, appName, latestIdx - 7, 7);
   const month = rangeAt(ts, appName, latestIdx, 30);
-  const arpdau = (row) => row && row.dau ? row.arpdau : null;
+  const priorMonth = rangeAt(ts, appName, latestIdx - 30, 30);
   return {
-    latestIdx,
     latestDate,
     latest,
-    prevDay,
     sameDayLastWeek,
-    sameDayLastYear,
-    week,
-    priorWeek,
     month,
     revenueDelta: {
       dod: metricDelta(latest && latest.revenue, prevDay && prevDay.revenue),
@@ -62,12 +86,22 @@ function compareBundle(ts, appName) {
       wow: metricDelta(week && week.revenue, priorWeek && priorWeek.revenue),
       yoy: metricDelta(latest && latest.revenue, sameDayLastYear && sameDayLastYear.revenue),
     },
-    arpdauDelta: {
-      dod: metricDelta(arpdau(latest), arpdau(prevDay)),
-      sdlw: metricDelta(arpdau(latest), arpdau(sameDayLastWeek)),
-      wow: metricDelta(week && week.arpdau, priorWeek && priorWeek.arpdau),
-      yoy: metricDelta(arpdau(latest), arpdau(sameDayLastYear)),
+    arpdavDelta: {
+      sdlw: metricDelta(valueOf(latest, "arpdav"), valueOf(sameDayLastWeek, "arpdav")),
+      d7: metricDelta(valueOf(week, "arpdav"), valueOf(priorWeek, "arpdav")),
+      d30: metricDelta(valueOf(month, "arpdav"), valueOf(priorMonth, "arpdav")),
     },
+    deltas: {
+      ecpm: metricDelta(valueOf(latest, "ecpm"), valueOf(sameDayLastWeek, "ecpm")),
+      impressions: metricDelta(valueOf(latest, "impressions"), valueOf(sameDayLastWeek, "impressions")),
+      matchRate: metricDelta(valueOf(latest, "matchRate"), valueOf(sameDayLastWeek, "matchRate")),
+      showRate: metricDelta(valueOf(latest, "showRate"), valueOf(sameDayLastWeek, "showRate")),
+      dau: metricDelta(valueOf(latest, "dau"), valueOf(sameDayLastWeek, "dau")),
+      dav: metricDelta(valueOf(latest, "dav"), valueOf(sameDayLastWeek, "dav")),
+    },
+    trend: recentMetricTrend(ts, appName, "arpdav"),
+    ecpmTrend: recentMetricTrend(ts, appName, "ecpm"),
+    davTrend: recentMetricTrend(ts, appName, "dav"),
   };
 }
 
@@ -96,6 +130,17 @@ function relatedTasks(tasks, taskAppMap, appName) {
     });
 }
 
+function sourceFor(row) {
+  const trend = row.trend.change.v || 0;
+  const ecpm = row.ecpmTrend.change.v || 0;
+  const dav = row.davTrend.change.v || 0;
+  const sameDirectionEcpm = trend === 0 ? false : Math.sign(trend) === Math.sign(ecpm);
+  if (sameDirectionEcpm && Math.abs(ecpm) >= Math.max(2, Math.abs(dav) * 0.5)) {
+    return { label: "Monetization", color: C.warn };
+  }
+  return { label: "Traffic / Geo", color: C.info };
+}
+
 function firstName(name) {
   return String(name || "Someone").split(/\s+/)[0] || "Someone";
 }
@@ -114,29 +159,30 @@ function DeltaPill({ label, change }) {
   );
 }
 
-function MetricLine({ label, value, change, code }) {
+function SortHeader({ label, col, active, onSort, align = "right" }) {
+  const on = active.key === col;
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(96px,1fr) minmax(76px,100px) minmax(76px,96px)", gap: 10, alignItems: "center", padding: "10px 0", borderTop: "1px solid " + C.line }}>
-      <span style={{ color: C.sub, fontSize: 12.5 }}>{label}</span>
-      <strong style={{ textAlign: "right", fontSize: 15, fontVariantNumeric: "tabular-nums" }}>{value}</strong>
-      <span title={code} style={{ textAlign: "right", color: change.fg, fontSize: 12.5, fontWeight: 750, fontVariantNumeric: "tabular-nums" }}>{code} {change.arrow} {change.txt}</span>
-    </div>
+    <th style={{ textAlign: align, padding: 0, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 2, background: C.surface }}>
+      <button onClick={() => onSort(col)} title={"Sort by " + label} style={{ width: "100%", border: 0, background: "transparent", color: on ? C.accentDk : C.faint, padding: "11px 14px", textAlign: align, cursor: "pointer", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 820 }}>
+        {label} {on ? active.dir === "asc" ? "▲" : "▼" : ""}
+      </button>
+    </th>
   );
 }
 
-function SectionCard({ title, children, right }) {
+function CompareCell({ change, strong }) {
+  const active = strong || (change.v != null && Math.abs(change.v) >= 10);
   return (
-    <section style={{ ...card, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 14, padding: "15px 18px", borderBottom: "1px solid " + C.line }}>
-        <div className="xg-display" style={{ fontSize: 22 }}>{title}</div>
-        {right}
-      </div>
-      <div style={{ padding: "4px 18px 14px" }}>{children}</div>
-    </section>
+    <td style={{ padding: "9px 14px", textAlign: "right" }}>
+      <span style={{ display: "inline-flex", minWidth: 86, justifyContent: "flex-end", padding: active ? "6px 8px" : 0, borderRadius: active ? 7 : 0, border: active ? "1px solid " + (change.v < 0 ? C.danger : C.forest) : "none", background: active ? (change.v < 0 ? C.dangerBg : C.forestBg) : "transparent", color: change.fg, fontSize: 13.5, fontWeight: active ? 800 : 650, fontVariantNumeric: "tabular-nums" }}>
+        {change.arrow} {change.txt}
+      </span>
+    </td>
   );
 }
 
-function TaskCell({ row, onOpenTask, onCreateTask }) {
+function TaskCell({ row, taskLoadState, onOpenTask, onCreateTask }) {
+  if (taskLoadState === "loading") return <span style={{ color: C.faint, fontSize: 12 }}>Checking ClickUp...</span>;
   if (row.primaryTask) {
     const assignee = row.primaryTask.assignee || "Someone";
     return (
@@ -153,45 +199,101 @@ function TaskCell({ row, onOpenTask, onCreateTask }) {
   );
 }
 
-function AppTable({ title, rows, empty, onOpenApp, onOpenTask, onCreateTask }) {
+function sortValue(row, key) {
+  if (key === "app") return row.name.toLowerCase();
+  if (key === "tier") return TIER_RANK[row.tier.id] || 9;
+  if (key === "revenue") return row.latest.revenue || 0;
+  if (key === "sdlw") return row.arpdavDelta.sdlw.v ?? -999;
+  if (key === "d7") return row.arpdavDelta.d7.v ?? -999;
+  if (key === "d30") return row.arpdavDelta.d30.v ?? -999;
+  if (key === "ecpm") return row.deltas.ecpm.v ?? -999;
+  if (key === "impressions") return row.deltas.impressions.v ?? -999;
+  if (key === "matchRate") return row.deltas.matchRate.v ?? -999;
+  if (key === "showRate") return row.deltas.showRate.v ?? -999;
+  if (key === "dau") return row.deltas.dau.v ?? -999;
+  if (key === "dav") return row.deltas.dav.v ?? -999;
+  if (key === "arpdav") return row.latest.arpdav || 0;
+  if (key === "source") return row.source.label;
+  if (key === "task") return row.primaryTask ? 0 : 1;
+  return 0;
+}
+
+function sortRows(rows, sort, direction) {
+  return rows.slice().sort((a, b) => {
+    const av = sortValue(a, sort.key);
+    const bv = sortValue(b, sort.key);
+    let cmp = typeof av === "string" || typeof bv === "string" ? String(av).localeCompare(String(bv)) : av - bv;
+    if (sort.dir === "desc") cmp *= -1;
+    if (cmp) return cmp;
+    const tierCmp = (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9);
+    if (tierCmp) return tierCmp;
+    return direction === "down" ? (a.trend.change.v || 0) - (b.trend.change.v || 0) : (b.trend.change.v || 0) - (a.trend.change.v || 0);
+  });
+}
+
+function AppTable({ title, code, rows, empty, direction, taskLoadState, onOpenApp, onOpenTask, onCreateTask }) {
+  const [sort, setSort] = useState({ key: "tier", dir: "asc" });
+  const sorted = sortRows(rows, sort, direction);
+  const onSort = (key) => setSort((s) => s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "app" || key === "tier" || key === "source" || key === "task" ? "asc" : "desc" });
   return (
     <section style={{ ...card, overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "15px 18px", borderBottom: "1px solid " + C.line }}>
-        <div className="xg-display" style={{ fontSize: 22 }}>{title}</div>
-        <span style={{ color: C.faint, fontSize: 12 }}>{rows.length} apps</span>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "16px 18px", borderBottom: "1px solid " + C.line, flexWrap: "wrap" }}>
+        <span style={{ color: C.accentDk, background: C.accentBg, borderRadius: 7, padding: "3px 8px", fontSize: 11, fontWeight: 850, letterSpacing: ".06em" }}>{code}</span>
+        <div style={{ color: C.accentDk, fontSize: 13, fontWeight: 850, letterSpacing: ".08em", textTransform: "uppercase" }}>{title}</div>
+        <span style={{ color: C.sub, fontSize: 18, fontWeight: 760 }}>{rows.length} apps</span>
+        <span style={{ color: C.faint, fontSize: 12 }}>T1 first by default - ARPDAV recent trend - 12 visible rows</span>
+      </div>
+      <div style={{ padding: "12px 18px 8px", display: "flex", gap: 18, color: C.sub, fontSize: 12.5, flexWrap: "wrap" }}>
+        <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: C.warn, marginRight: 7 }} />Monetization</span>
+        <span><span style={{ display: "inline-block", width: 9, height: 9, borderRadius: "50%", background: C.info, marginRight: 7 }} />Traffic / Geo</span>
+        <span style={{ color: C.faint }}>Shaded cells show larger moves.</span>
       </div>
       {rows.length ? (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", minWidth: 1220, borderCollapse: "collapse" }}>
+        <div style={{ overflow: "auto", maxHeight: 736, borderTop: "1px solid " + C.line }}>
+          <table style={{ width: "100%", minWidth: 1420, borderCollapse: "collapse" }}>
             <thead>
-              <tr style={{ color: C.faint, fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".04em" }}>
-                {["Application", "Tier", "Revenue", "ARPDAU", "DOD", "SDLW", "WOW", "YOY", "eCPM", "Impr.", "DAU", "Task"].map((h) => (
-                  <th key={h} style={{ textAlign: h === "Application" || h === "Task" ? "left" : "right", padding: "10px 14px", borderBottom: "1px solid " + C.line, whiteSpace: "nowrap" }}>{h}</th>
-                ))}
+              <tr>
+                <SortHeader label="App" col="app" active={sort} onSort={onSort} align="left" />
+                <SortHeader label="Tier" col="tier" active={sort} onSort={onSort} />
+                <SortHeader label="Rev (Yest)" col="revenue" active={sort} onSort={onSort} />
+                <SortHeader label="Vs SDLW" col="sdlw" active={sort} onSort={onSort} />
+                <SortHeader label="7D" col="d7" active={sort} onSort={onSort} />
+                <SortHeader label="30D" col="d30" active={sort} onSort={onSort} />
+                <SortHeader label="eCPM" col="ecpm" active={sort} onSort={onSort} />
+                <SortHeader label="Impr" col="impressions" active={sort} onSort={onSort} />
+                <SortHeader label="Match" col="matchRate" active={sort} onSort={onSort} />
+                <SortHeader label="Show" col="showRate" active={sort} onSort={onSort} />
+                <SortHeader label="DAU" col="dau" active={sort} onSort={onSort} />
+                <SortHeader label="DAV" col="dav" active={sort} onSort={onSort} />
+                <SortHeader label="ARPDAV" col="arpdav" active={sort} onSort={onSort} />
+                <SortHeader label="Task" col="task" active={sort} onSort={onSort} align="left" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {sorted.map((row) => (
                 <tr key={row.name} style={{ borderTop: "1px solid " + C.line }}>
-                  <td style={{ padding: "11px 14px", width: 340 }}>
-                    <button onClick={() => onOpenApp(row.name)} style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, border: 0, background: "transparent", color: C.ink, padding: 0, cursor: "pointer", textAlign: "left" }}>
-                      <AppAvatar app={{ id: row.name, name: row.name }} size={30} radius={8} />
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontWeight: 720, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.name}</span>
-                        <span style={{ color: row.mainChange.fg, fontSize: 11.5 }}>ARPDAU {row.mainChange.arrow} {row.mainChange.txt} SDLW</span>
+                  <td style={{ padding: "13px 14px", minWidth: 280, maxWidth: 340 }}>
+                    <button onClick={() => onOpenApp(row.name)} style={{ border: 0, background: "transparent", color: C.ink, padding: 0, cursor: "pointer", textAlign: "left", width: "100%" }}>
+                      <span style={{ display: "block", fontWeight: 780, fontSize: 14.5, lineHeight: 1.35 }}>{row.name}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 7, color: C.sub, marginTop: 5, fontSize: 12.5 }}>
+                        <span style={{ width: 9, height: 9, borderRadius: "50%", background: row.source.color, flex: "none" }} />
+                        Source: {row.source.label}
                       </span>
                     </button>
                   </td>
-                  <td style={{ padding: "11px 14px", textAlign: "right" }}><span style={{ color: row.tier.color, background: row.tier.bg, borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 800 }}>{row.tier.label}</span></td>
-                  <td style={{ padding: "11px 14px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{money(row.latest.revenue)}</td>
-                  <td style={{ padding: "11px 14px", textAlign: "right", fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{row.latest.dau ? money4(row.latest.arpdau) : "n/a"}</td>
-                  {["dod", "sdlw", "wow", "yoy"].map((k) => (
-                    <td key={k} style={{ padding: "11px 14px", textAlign: "right", color: row.arpdauDelta[k].fg, fontWeight: 720, fontVariantNumeric: "tabular-nums" }}>{row.arpdauDelta[k].arrow} {row.arpdauDelta[k].txt}</td>
-                  ))}
-                  <td style={{ padding: "11px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{money2(row.latest.ecpm)}</td>
-                  <td style={{ padding: "11px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{compact(row.latest.impressions)}</td>
-                  <td style={{ padding: "11px 14px", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{row.latest.dau ? compact(row.latest.dau) : "n/a"}</td>
-                  <td style={{ padding: "11px 14px", minWidth: 160 }}><TaskCell row={row} onOpenTask={onOpenTask} onCreateTask={onCreateTask} /></td>
+                  <td style={{ padding: "13px 14px", textAlign: "right", color: C.faint, fontSize: 14, fontWeight: 820 }}>{row.tier.id}</td>
+                  <td style={{ padding: "13px 14px", textAlign: "right", fontWeight: 720, fontVariantNumeric: "tabular-nums" }}>{money(row.latest.revenue)}</td>
+                  <CompareCell change={row.arpdavDelta.sdlw} />
+                  <CompareCell change={row.arpdavDelta.d7} strong={direction === "down" ? (row.arpdavDelta.d7.v || 0) < -10 : (row.arpdavDelta.d7.v || 0) > 10} />
+                  <CompareCell change={row.arpdavDelta.d30} />
+                  <CompareCell change={row.deltas.ecpm} />
+                  <CompareCell change={row.deltas.impressions} />
+                  <CompareCell change={row.deltas.matchRate} />
+                  <CompareCell change={row.deltas.showRate} />
+                  <CompareCell change={row.deltas.dau} />
+                  <CompareCell change={row.deltas.dav} />
+                  <td style={{ padding: "13px 14px", textAlign: "right", fontWeight: 720, fontVariantNumeric: "tabular-nums" }}>{row.latest.dav ? money4(row.latest.arpdav) : "n/a"}</td>
+                  <td style={{ padding: "13px 14px", minWidth: 170 }}><TaskCell row={row} taskLoadState={taskLoadState} onOpenTask={onOpenTask} onCreateTask={onCreateTask} /></td>
                 </tr>
               ))}
             </tbody>
@@ -202,7 +304,7 @@ function AppTable({ title, rows, empty, onOpenApp, onOpenTask, onCreateTask }) {
   );
 }
 
-export default function OverviewTab({ ts, tsError, tasks, taskAppMap, setPage, setAppId, setAppTab, setOpenTask, openCreate }) {
+export default function OverviewTab({ ts, tsError, tasks, taskAppMap, taskLoadState, taskError, setPage, setAppId, setAppTab, setOpenTask, openCreate }) {
   const model = useMemo(() => {
     if (!ts || !ts.dates || !ts.dates.length) return null;
     const portfolio = compareBundle(ts, null);
@@ -212,26 +314,27 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, setPage, s
       const tier = tierFor(revenue30);
       const allTasks = relatedTasks(tasks, taskAppMap, name);
       const openTasks = allTasks.filter((t) => groupId(t.status) !== "done");
-      const primaryTask = openTasks[0] || null;
-      const mainChange = bundle.arpdauDelta.sdlw;
-      return {
+      const row = {
         name,
         tier,
         latest: bundle.latest || {},
-        week: bundle.week || {},
         revenue30,
-        arpdauDelta: bundle.arpdauDelta,
-        mainChange,
-        primaryTask,
+        arpdavDelta: bundle.arpdavDelta,
+        deltas: bundle.deltas,
+        trend: bundle.trend,
+        ecpmTrend: bundle.ecpmTrend,
+        davTrend: bundle.davTrend,
+        primaryTask: openTasks[0] || null,
         extraTasks: Math.max(0, openTasks.length - 1),
       };
-    }).filter((row) => (row.latest.revenue || 0) >= MIN_DAILY_REVENUE);
+      return { ...row, source: sourceFor(row) };
+    }).filter((row) => (row.latest.revenue || 0) >= MIN_DAILY_REVENUE && row.latest.dav);
     const down = appRows
-      .filter((row) => (row.mainChange.v || 0) < -0.15)
-      .sort((a, b) => (a.mainChange.v || 0) - (b.mainChange.v || 0) || (b.latest.revenue || 0) - (a.latest.revenue || 0));
+      .filter((row) => (row.trend.change.v || 0) < -0.15)
+      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (a.trend.change.v || 0) - (b.trend.change.v || 0));
     const up = appRows
-      .filter((row) => (row.mainChange.v || 0) >= -0.15)
-      .sort((a, b) => (b.mainChange.v || 0) - (a.mainChange.v || 0) || (b.latest.revenue || 0) - (a.latest.revenue || 0));
+      .filter((row) => (row.trend.change.v || 0) >= 0.15)
+      .sort((a, b) => (TIER_RANK[a.tier.id] || 9) - (TIER_RANK[b.tier.id] || 9) || (b.trend.change.v || 0) - (a.trend.change.v || 0));
     return { portfolio, down, up, appCount: appRows.length };
   }, [ts, tasks, taskAppMap]);
 
@@ -240,24 +343,30 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, setPage, s
 
   const p = model.portfolio;
   const latest = p.latest || {};
-  const latestDate = p.latestDate;
   const openApp = (name) => { setAppId(name); setAppTab("dashboard"); setPage("apps"); };
   const openTask = (id) => { setPage("tasks"); setOpenTask(id); };
   const createTask = (row) => {
-    const change = row.mainChange && row.mainChange.txt !== "n/a" ? row.mainChange.txt : "changed";
-    const isDrop = (row.mainChange && row.mainChange.v) < 0;
+    const change = row.trend.change && row.trend.change.txt !== "n/a" ? row.trend.change.txt : "changed";
+    const isDrop = (row.trend.change && row.trend.change.v) < 0;
     openCreate({
-      name: (isDrop ? "Investigate ARPDAU drop for " : "Review ARPDAU uplift for ") + row.name,
+      name: (isDrop ? "Investigate ARPDAV downtrend for " : "Review ARPDAV uplift for ") + row.name,
       list: "App Portfolio",
       app: row.name,
       assignee: defaultAppAssignee(),
-      priority: isDrop && Math.abs(row.mainChange.v || 0) >= 10 ? "urgent" : "high",
+      priority: isDrop && Math.abs(row.trend.change.v || 0) >= 10 ? "urgent" : "high",
       due: formatDue(2),
-      ctxTitle: isDrop ? "ARPDAU drop" : "ARPDAU uplift",
-      ctxValue: change + " SDLW - latest revenue " + money(row.latest.revenue || 0),
+      ctxTitle: isDrop ? "ARPDAV downtrend" : "ARPDAV uplift",
+      ctxValue: change + " over recent " + row.trend.days + "D - " + row.source.label + " source - revenue " + money(row.latest.revenue || 0),
       ctxBad: isDrop,
     });
   };
+  const taskNote = taskLoadState === "ready"
+    ? "ClickUp task snapshot checked; task matches are inferred from app names."
+    : taskLoadState === "loading"
+      ? "Checking ClickUp tasks for app ownership..."
+      : taskLoadState === "error"
+        ? "ClickUp task check failed: " + taskError
+        : "ClickUp tasks will load here before deployment review.";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -265,7 +374,7 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, setPage, s
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(260px,1fr))", gap: 22, alignItems: "end" }}>
           <div>
             <h1 className="xg-display" style={{ margin: 0, fontSize: 42, lineHeight: 1.03, fontWeight: 620 }}>Overview</h1>
-            <div style={{ color: C.sub, fontSize: 14, lineHeight: 1.55, marginTop: 10 }}>Latest data date is {latestDate}. Comparisons use real portfolio revenue from the cached Trends feed.</div>
+            <div style={{ color: C.sub, fontSize: 14, lineHeight: 1.55, marginTop: 10 }}>Latest data date is {p.latestDate}. Revenue comparison is shown at the top; app sections are classified by ARPDAV movement over the recent {RECENT_TREND_DAYS}-day trend.</div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
               <div style={{ fontSize: 46, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{money(latest.revenue)}</div>
               <span style={{ color: C.faint, fontSize: 12, fontWeight: 700, textTransform: "uppercase" }}>latest day revenue</span>
@@ -280,37 +389,14 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, setPage, s
         </div>
       </section>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 16 }}>
-        <SectionCard title="Portfolio Revenue" right={<span style={{ color: C.faint, fontSize: 12 }}>{shortDate(latestDate)}</span>}>
-          <MetricLine label="Latest day" value={money(latest.revenue)} change={p.revenueDelta.dod} code="DOD" />
-          <MetricLine label="Same day last week" value={money(p.sameDayLastWeek && p.sameDayLastWeek.revenue)} change={p.revenueDelta.sdlw} code="SDLW" />
-          <MetricLine label="Last 7D revenue" value={money(p.week && p.week.revenue)} change={p.revenueDelta.wow} code="WOW" />
-          <MetricLine label="Same day last year" value={money(p.sameDayLastYear && p.sameDayLastYear.revenue)} change={p.revenueDelta.yoy} code="YOY" />
-        </SectionCard>
+      <div style={{ color: C.faint, fontSize: 12.5, padding: "0 2px" }}>{taskNote}</div>
 
-        <SectionCard title="Traffic vs Monetization" right={<button onClick={() => setPage("daily")} style={{ border: "1px solid " + C.line, background: C.field, color: C.sub, borderRadius: 8, padding: "6px 10px", fontSize: 12, fontWeight: 720, cursor: "pointer" }}>Daily Reports</button>}>
-          <MetricLine label="ARPDAU" value={latest.dau ? money4(latest.arpdau) : "n/a"} change={p.arpdauDelta.sdlw} code="SDLW" />
-          <MetricLine label="eCPM" value={money2(latest.ecpm)} change={metricDelta(latest.ecpm, p.sameDayLastWeek && p.sameDayLastWeek.ecpm)} code="SDLW" />
-          <MetricLine label="Impressions" value={compact(latest.impressions)} change={metricDelta(latest.impressions, p.sameDayLastWeek && p.sameDayLastWeek.impressions)} code="SDLW" />
-          <MetricLine label="DAU" value={latest.dau ? compact(latest.dau) : "n/a"} change={metricDelta(latest.dau, p.sameDayLastWeek && p.sameDayLastWeek.dau)} code="SDLW" />
-          <MetricLine label="DAV" value={latest.dav ? compact(latest.dav) : "n/a"} change={metricDelta(latest.dav, p.sameDayLastWeek && p.sameDayLastWeek.dav)} code="SDLW" />
-          <MetricLine label="Match rate" value={pct100(latest.matchRate)} change={metricDelta(latest.matchRate, p.sameDayLastWeek && p.sameDayLastWeek.matchRate)} code="SDLW" />
-          <MetricLine label="Show rate" value={pct100(latest.showRate)} change={metricDelta(latest.showRate, p.sameDayLastWeek && p.sameDayLastWeek.showRate)} code="SDLW" />
-        </SectionCard>
-      </section>
+      <AppTable title="Needs Attention" code="DOWN" direction="down" rows={model.down} empty="No ARPDAV downtrend found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
+      <AppTable title="Improved Performance" code="UP" direction="up" rows={model.up} empty="No ARPDAV uplift found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
 
-      <section style={{ ...card, padding: "15px 18px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-          <div>
-            <div className="xg-display" style={{ fontSize: 24 }}>Application Health</div>
-            <div style={{ color: C.faint, fontSize: 12.5, marginTop: 3 }}>Apps with latest-day revenue of {money(MIN_DAILY_REVENUE)}+; ranked by ARPDAU movement. Tiers use the Settings revenue bands.</div>
-          </div>
-          <button onClick={() => setPage("apps")} style={{ border: "1px solid " + C.line, background: C.field, color: C.sub, borderRadius: 8, padding: "8px 12px", fontSize: 12, fontWeight: 760, cursor: "pointer" }}>Open Applications</button>
-        </div>
-      </section>
-
-      <AppTable title="Downlift" rows={model.down} empty="No ARPDAU downlift found for apps above the daily revenue threshold." onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
-      <AppTable title="Uplift" rows={model.up} empty="No ARPDAU uplift found for apps above the daily revenue threshold." onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
+      <div style={{ color: C.faint, fontSize: 12, lineHeight: 1.45, padding: "0 2px" }}>
+        Showing {model.appCount} apps above the {money(MIN_DAILY_REVENUE)}/day floor. Sort any header; each table keeps 12 rows visible and scrolls for the full list.
+      </div>
     </div>
   );
 }

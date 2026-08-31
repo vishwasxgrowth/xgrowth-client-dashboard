@@ -213,7 +213,7 @@ export default function XgrowthOps() {
     });
   }, [hasSavedTasks, taskLoadState]);
   useEffect(() => {
-    if ((page === "tasks" || page === "tests" || page === "settings") && taskLoadState === "idle") loadClickUp();
+    if ((page === "dashboard" || page === "tasks" || page === "tests" || page === "settings") && taskLoadState === "idle") loadClickUp();
   }, [loadClickUp, page, taskLoadState]);
   const resetSaved = () => {
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
@@ -285,7 +285,7 @@ export default function XgrowthOps() {
 
         <div style={{ flex: 1, overflow: "auto", padding: 22 }}>
           <StatusNotice sourceError={D.SOURCE_ERROR} taskLoadState={taskLoadState} taskError={taskError} page={page} onRetry={loadClickUp} />
-          {page === "dashboard" && <OverviewTab {...{ ts, tsError, tasks, taskAppMap, setPage, setAppId, setAppTab, setOpenTask, openCreate }} />}
+          {page === "dashboard" && <OverviewTab {...{ ts, tsError, tasks, taskAppMap, taskLoadState, taskError, setPage, setAppId, setAppTab, setOpenTask, openCreate }} />}
           {page === "trends" && <ReportsDashboard mode="trends" />}
           {page === "daily" && <ReportsDashboard mode="daily" />}
           {page === "apps" && <AppsTab {...{ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }} />}
