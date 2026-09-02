@@ -11,8 +11,8 @@ import D from "../activeData";
 // back because nothing ever loaded it. Numbers align via tabular-nums
 // (applied app-wide from the root container in XgrowthOps.tsx) instead of a
 // separate monospace face, again matching the Dashboard tab's approach.
-const SYSTEM_SANS = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-const DISPLAY = "Georgia, 'Times New Roman', serif";
+const SYSTEM_SANS = "Montserrat, Inter, ui-sans-serif, system-ui, sans-serif";
+const DISPLAY = SYSTEM_SANS;
 
 export const C = {
   bg: "var(--xg-bg)", bg2: "var(--xg-bg-2)", panel: "var(--xg-panel)", surface: "var(--xg-surface)",
@@ -20,6 +20,8 @@ export const C = {
   line: "var(--xg-line)", lineStrong: "var(--xg-line-strong)",
   ink: "var(--xg-ink)", sub: "var(--xg-sub)", faint: "var(--xg-faint)", faint2: "var(--xg-faint-2)",
   accent: "var(--xg-accent)", accentDk: "var(--xg-accent-strong)", accentBg: "var(--xg-accent-soft)",
+  brand: "var(--xg-brand-accent)", brandBg: "var(--xg-brand-accent-soft)",
+  darkCanvas: "var(--xg-dark-canvas)", darkPanel: "var(--xg-dark-panel)", darkText: "var(--xg-dark-text)", darkSub: "var(--xg-dark-sub)", darkMuted: "var(--xg-dark-muted)", darkLine: "var(--xg-dark-line)",
   forest: "var(--xg-forest)", forestBg: "var(--xg-forest-soft)",
   plum: "var(--xg-plum)", plumBg: "var(--xg-plum-soft)",
   danger: "var(--xg-danger)", dangerBg: "var(--xg-danger-soft)",
@@ -68,7 +70,7 @@ export function delta(cur, prev, invert) {
 }
 export const initials = (s) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 export const appInitials = (name) => { const w = name.replace(/[^\w\s&]/g, "").split(/\s+/).filter(Boolean); return ((w[0] || "")[0] + ((w[1] || "")[0] || "")).toUpperCase(); };
-export function appColor(id) { const p = ["#CFA85A", "#3D7A60", "#8A5876", "#42718C", "#A56848", "#76669E", "#6F8055", "#B68B4B", "#4F7E86", "#9A4F5E", "#60718C", "#8B7342"]; let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; }
+export function appColor(id) { const p = ["#0343EF", "#15803D", "#6D3E75", "#B45309", "#475569", "#0E0F0C", "#2563EB", "#0F766E", "#7C3AED", "#B91C1C", "#64748B", "#181A15"]; let h = 0; for (const c of id) h = (h * 31 + c.charCodeAt(0)) >>> 0; return p[h % p.length]; }
 export const member = (name) => {
   const m = D.MEMBERS.find((x) => x.name === name);
   if (m) return { ...m, initials: m.initials || initials(m.name), color: m.color || appColor(m.name) };
@@ -95,7 +97,7 @@ export function computeDates(range, cs, ce) {
 }
 
 export const Pill = ({ fg, bg, children }) => <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: fg, background: bg, whiteSpace: "nowrap" }}>{children}</span>;
-export const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 8, boxShadow: C.shadowSoft };
+export const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 16, boxShadow: C.shadowSoft };
 export const Empty = ({ children }) => <div style={{ ...card, padding: 40, textAlign: "center", color: C.faint }}>{children}</div>;
 
 // Real store icon when the live source resolved one (see liveSource.ts /

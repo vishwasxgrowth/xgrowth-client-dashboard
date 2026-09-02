@@ -18,14 +18,14 @@ const PROXY = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").trim();
 function Login({ onSignIn }) {
   return (
     <div className="xg-app-shell" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--xg-font-sans)", padding: 20 }}>
-      <div style={{ width: 380, background: "var(--xg-surface)", color: "var(--xg-ink)", border: "1px solid var(--xg-line)", borderRadius: 10, padding: "36px 34px", boxShadow: "var(--xg-shadow)" }}>
+      <div style={{ width: 380, background: "var(--xg-surface)", color: "var(--xg-ink)", border: "1px solid var(--xg-line)", borderRadius: 16, padding: "36px 34px", boxShadow: "var(--xg-shadow)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 22 }}>
-          <div style={{ width: 30, height: 30, borderRadius: 8, background: "var(--xg-accent)", color: "var(--xg-inverse)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "var(--xg-brand-accent)", color: "#2B2F26", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
           <b>{NAME}</b>
         </div>
-        <h2 className="xg-display" style={{ margin: "0 0 6px", fontSize: 28 }}>Sign in</h2>
+        <h2 className="xg-display" style={{ margin: "0 0 6px", fontSize: 28, lineHeight: "34px", fontWeight: 760 }}>Sign in</h2>
         <p style={{ margin: "0 0 20px", color: "var(--xg-sub)", fontSize: 13.5 }}>Sign in with the Google account that owns your AdMob.</p>
-        <button onClick={onSignIn} style={{ width: "100%", padding: 11, borderRadius: 8, border: "1px solid var(--xg-line)", background: "var(--xg-field)", fontWeight: 650, cursor: "pointer" }}>Continue with Google</button>
+        <button onClick={onSignIn} style={{ width: "100%", padding: 11, borderRadius: 8, border: "none", background: "var(--xg-accent)", color: "var(--xg-inverse)", fontWeight: 740, cursor: "pointer" }}>Continue with Google</button>
       </div>
     </div>
   );

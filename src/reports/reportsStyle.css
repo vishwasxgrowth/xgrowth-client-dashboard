@@ -6,8 +6,8 @@
   --status-fg: var(--xg-sub);
   --muted-fg: var(--xg-faint);
   --grid: var(--xg-line);
-  --line: var(--xg-accent);
-  --line-wash: var(--xg-accent-soft);
+  --line: var(--xg-info);
+  --line-wash: var(--xg-info-soft);
   --accent: var(--xg-accent);
   --compare: var(--xg-faint-2);
   --up: var(--xg-forest);
@@ -104,7 +104,7 @@ select {
 }
 .stat {
   background: var(--surface); border: 1px solid var(--chrome-border);
-  border-radius: 8px; padding: 14px 16px;
+  border-radius: 16px; padding: 14px 16px;
   box-shadow: var(--xg-shadow-soft);
 }
 .stat-label {
@@ -121,7 +121,7 @@ select {
 /* ---------- hero ---------- */
 .hero {
   background: var(--surface); border: 1px solid var(--chrome-border);
-  border-radius: 8px; padding: 16px 18px; margin-bottom: 12px;
+  border-radius: 16px; padding: 16px 18px; margin-bottom: 12px;
   box-shadow: var(--xg-shadow-soft);
 }
 .hero-label {
@@ -147,7 +147,7 @@ select {
 .pcard {
   display: flex; flex-direction: column; gap: 3px; text-align: left;
   background: var(--surface); border: 1px solid var(--chrome-border);
-  border-radius: 8px; padding: 11px 13px; font: inherit; color: inherit;
+  border-radius: 16px; padding: 11px 13px; font: inherit; color: inherit;
   cursor: pointer; appearance: none; transition: border-color .12s, background .12s;
 }
 .pcard.is-static { cursor: default; }
@@ -168,7 +168,7 @@ button.pcard:hover { border-color: var(--line); background: var(--surface-sunk);
 /* ---------- chart ---------- */
 .chart-card {
   margin: 0 0 18px; background: var(--surface);
-  border: 1px solid var(--chrome-border); border-radius: 8px; padding: 16px;
+  border: 1px solid var(--chrome-border); border-radius: 16px; padding: 16px;
   box-shadow: var(--xg-shadow-soft);
 }
 .chart-head {
@@ -199,7 +199,7 @@ button.pcard:hover { border-color: var(--line); background: var(--surface-sunk);
 /* ---------- table ---------- */
 .table-card {
   background: var(--surface); border: 1px solid var(--chrome-border);
-  border-radius: 8px; overflow: hidden;
+  border-radius: 16px; overflow: hidden;
   box-shadow: var(--xg-shadow-soft);
 }
 .table-head {
@@ -257,7 +257,7 @@ td.col-bd { font-variant-numeric: normal; }
 .shell-status { padding: 40px 20px; text-align: center; color: var(--status-fg); font-size: 14px; display: none; }
 .report-frame {
   display: block; width: 100%; min-height: 400px;
-  border: 1px solid var(--chrome-border); border-radius: 8px;
+  border: 1px solid var(--chrome-border); border-radius: 16px;
   background: var(--surface); box-shadow: var(--xg-shadow-soft);
 }
 

@@ -154,8 +154,8 @@ function firstName(name) {
 
 function DeltaPill({ label, change }) {
   return (
-    <div title={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, border: "1px solid " + C.line, background: C.field, color: change.fg, borderRadius: 8, padding: "7px 8px", minWidth: 0, whiteSpace: "nowrap" }}>
-      <span style={{ color: C.faint, fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em" }}>{label}</span>
+    <div title={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 5, border: "1px solid " + C.darkLine, background: "rgba(255,255,255,0.04)", color: change.fg, borderRadius: 8, padding: "7px 8px", minWidth: 0, whiteSpace: "nowrap" }}>
+      <span style={{ color: C.darkMuted, fontSize: 9.5, fontWeight: 800, letterSpacing: ".03em" }}>{label}</span>
       <span style={{ fontSize: 12.5, fontWeight: 760, fontVariantNumeric: "tabular-nums" }}>{change.arrow} {change.txt}</span>
     </div>
   );
@@ -163,17 +163,40 @@ function DeltaPill({ label, change }) {
 
 function MetricCard({ title, value, subtitle, deltas }) {
   return (
-    <section style={{ ...card, padding: 22, minHeight: 184, display: "grid", alignContent: "space-between", gap: 18, overflow: "hidden" }}>
+    <section style={{ background: C.darkPanel, border: "1px solid " + C.darkLine, borderRadius: 16, padding: 18, minHeight: 176, display: "grid", alignContent: "space-between", gap: 18, overflow: "hidden" }}>
       <div>
-        <div style={{ fontSize: 40, fontWeight: 760, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{value}</div>
-        <div style={{ color: C.faint, fontSize: 11, fontWeight: 760, textTransform: "uppercase", marginTop: 8 }}>{title}</div>
-        {subtitle && <div style={{ color: C.sub, fontSize: 12, marginTop: 3 }}>{subtitle}</div>}
+        <div style={{ color: C.darkText, fontSize: 38, fontWeight: 800, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>{value}</div>
+        <div style={{ color: C.darkMuted, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginTop: 9 }}>{title}</div>
+        {subtitle && <div style={{ color: C.darkSub, fontSize: 12, marginTop: 3 }}>{subtitle}</div>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 }}>
         <DeltaPill label="DOD" change={deltas.dod} />
         <DeltaPill label="SDLW" change={deltas.sdlw} />
         <DeltaPill label="WOW" change={deltas.wow} />
         <DeltaPill label="YOY" change={deltas.yoy} />
+      </div>
+    </section>
+  );
+}
+
+function ExecutiveSummary({ p }) {
+  const latest = p.latest || {};
+  return (
+    <section style={{ position: "relative", overflow: "hidden", background: C.darkCanvas, color: C.darkText, border: "1px solid " + C.darkLine, borderRadius: 16, padding: 28, boxShadow: C.shadowSoft }}>
+      <div style={{ position: "absolute", width: 740, height: 740, right: -260, top: -430, background: "radial-gradient(circle, rgba(3,67,239,0.16) 0%, rgba(3,67,239,0.05) 42%, rgba(14,15,12,0) 70%)", pointerEvents: "none" }} />
+      <div className="xg-overview-hero-grid">
+        <div>
+          <div style={{ color: C.brand, fontSize: 12, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase" }}>Executive summary</div>
+          <h1 className="xg-display" style={{ margin: "8px 0 0", fontSize: 32, lineHeight: "40px", fontWeight: 780 }}>Overview</h1>
+          <p style={{ margin: "10px 0 0", maxWidth: 540, color: C.darkSub, fontSize: 14, lineHeight: "22px" }}>
+            Portfolio movement using the latest Sheet push. Every headline metric carries a comparison window so the number has context.
+          </p>
+          <div style={{ marginTop: 18, color: C.darkMuted, fontSize: 12, fontWeight: 600 }}>Data through {p.latestDate}</div>
+        </div>
+        <div className="xg-overview-metrics">
+          <MetricCard title="Revenue yesterday" value={money(latest.revenue)} subtitle="Portfolio total" deltas={p.revenueDelta} />
+          <MetricCard title="ARPDAV yesterday" value={latest.dav ? money4(latest.arpdav) : "n/a"} subtitle="Compared across DOD, SDLW, WOW, YOY" deltas={p.arpdavDelta} />
+        </div>
       </div>
     </section>
   );
@@ -379,16 +402,7 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, taskLoadSt
   };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <section style={{ display: "grid", gap: 12 }}>
-        <div>
-          <h1 className="xg-display" style={{ margin: 0, fontSize: 42, lineHeight: 1.03, fontWeight: 620 }}>Overview</h1>
-          <div style={{ color: C.faint, fontSize: 12, fontWeight: 720, letterSpacing: ".04em", textTransform: "uppercase", marginTop: 8 }}>Data through {p.latestDate}</div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(360px,1fr))", gap: 14 }}>
-          <MetricCard title="Revenue yesterday" value={money(latest.revenue)} subtitle="Portfolio total" deltas={p.revenueDelta} />
-          <MetricCard title="ARPDAV yesterday" value={latest.dav ? money4(latest.arpdav) : "n/a"} subtitle="Compared across DOD, SDLW, WOW, YOY" deltas={p.arpdavDelta} />
-        </div>
-      </section>
+      <ExecutiveSummary p={p} />
 
       <AppTable title="Needs Attention" direction="down" rows={model.down} empty="No ARPDAV SDLW decline found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />
       <AppTable title="Improved Performance" direction="up" rows={model.up} empty="No ARPDAV SDLW improvement found for apps above the $50/day noise floor." taskLoadState={taskLoadState} onOpenApp={openApp} onOpenTask={openTask} onCreateTask={createTask} />

@@ -41,7 +41,7 @@ function readInitialTheme() {
     if (saved === "light" || saved === "dark") return saved;
     return window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   } catch (e) {
-    return "dark";
+    return "light";
   }
 }
 
@@ -286,8 +286,8 @@ export default function XgrowthOps() {
     <div className="xg-app-shell" style={{ display: "flex", height: "100vh", background: C.bg, color: C.ink, fontFamily: C.sans, fontVariantNumeric: "tabular-nums", overflow: "hidden", position: "relative" }}>
       <div style={{ width: collapsed ? 62 : "fit-content", minWidth: collapsed ? 62 : 188, flex: "none", background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "14px 10px", transition: "width .15s", backdropFilter: "blur(18px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 6px 8px" }}>
-          <div style={{ width: 30, height: 30, flex: "none", borderRadius: 8, background: C.accent, color: C.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800 }}>xG</div>
-          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div className="xg-display" style={{ fontSize: 17, fontWeight: 620, whiteSpace: "nowrap" }}>xGrowth × {CLIENT_NAME}</div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: C.faint2 }}>Atelier Console</div></div>}
+          <div style={{ width: 32, height: 32, flex: "none", borderRadius: 10, background: C.brand, color: "#2B2F26", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, letterSpacing: 0 }}>xG</div>
+          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div className="xg-display" style={{ fontSize: 16, fontWeight: 760, whiteSpace: "nowrap" }}>xGrowth × {CLIENT_NAME}</div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: C.faint2, letterSpacing: ".04em" }}>Monetization console</div></div>}
         </div>
         <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
@@ -295,7 +295,7 @@ export default function XgrowthOps() {
         <div style={{ marginBottom: 12 }}>
           {NAV.map((n) => { const on = page === n.id; const badge = n.id === "tasks" && overdueAll.length > 0; return (
             <button key={n.id} onClick={() => { setPage(n.id); setAppId(null); }} title={collapsed ? n.label : undefined}
-              style={{ position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 7, border: on ? "1px solid " + C.line : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 680 : 520, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
+              style={{ position: "relative", width: "100%", display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-start", gap: 11, padding: collapsed ? "10px 0" : "9px 12px", marginBottom: 2, borderRadius: 8, border: on ? "1px solid " + C.lineStrong : "1px solid transparent", cursor: "pointer", fontSize: 13.5, fontWeight: on ? 700 : 560, whiteSpace: "nowrap", color: on ? C.accentDk : C.sub, background: on ? C.accentBg : "transparent" }}>
               <span style={{ display: "flex", flex: "none" }}><NavIcon id={n.id} color={on ? C.accentDk : C.sub} /></span>
               {!collapsed && <span>{n.label}</span>}
               {!collapsed && badge && <><span style={{ flex: 1 }} /><span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 20, background: C.dangerBg, color: C.danger }}>{overdueAll.length}</span></>}
@@ -308,9 +308,9 @@ export default function XgrowthOps() {
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ minHeight: 64, flex: "none", borderBottom: "1px solid " + C.line, background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", flexWrap: "wrap", backdropFilter: "blur(18px)" }}>
-          <div><div className="xg-display" style={{ fontSize: 24, fontWeight: 620 }}>{pageTitle}</div>{page === "tasks" && <div style={{ fontSize: 11.5, color: C.faint }}>{clickupLabel}</div>}</div>
+          <div><div className="xg-display" style={{ fontSize: 28, lineHeight: "34px", fontWeight: 760 }}>{pageTitle}</div>{page === "tasks" && <div style={{ fontSize: 11.5, color: C.faint }}>{clickupLabel}</div>}</div>
           <div style={{ flex: 1 }} />
-          <button onClick={() => openCreate(null)} style={{ height: 34, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>
+          <button onClick={() => openCreate(null)} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 740, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>
           {page === "apps" && <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />}
           <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>
