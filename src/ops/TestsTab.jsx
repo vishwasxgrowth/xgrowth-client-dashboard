@@ -6,9 +6,13 @@ const TEST_LIST = "Tests & Experiments";
 const STATUS_ORDER = ["blocked", "live", "ready for review", "review results", "to do", "complete", "done"];
 
 function field(t, names) {
+  const f = fieldObj(t, names);
+  return f ? (f.display ?? f.value ?? "") : "";
+}
+
+function fieldObj(t, names) {
   const wanted = names.map((n) => n.toLowerCase());
-  const cf = (t.customFields || []).find((x) => wanted.includes(String(x.name || "").toLowerCase()));
-  return cf ? cf.value : "";
+  return (t.allCustomFields || t.customFields || []).find((x) => wanted.includes(String(x.name || "").toLowerCase()));
 }
 
 function appName(t) {
@@ -42,6 +46,26 @@ function summaryText(t) {
 
 function significant(t) {
   return field(t, ["Results are significant?", "Results significant?", "Significant"]);
+}
+
+function cfOptions(f) {
+  const opts = f?.typeConfig?.options || f?.type_config?.options || [];
+  return opts.map((o) => ({ label: o.name || o.label || o.id, value: o.id ?? o.orderindex ?? o.label ?? o.name }));
+}
+
+function editableCustomValue(f, displayValue) {
+  if (f?.type === "drop_down") {
+    const match = cfOptions(f).find((o) => o.label === displayValue || String(o.value) === String(displayValue));
+    return match ? match.value : displayValue;
+  }
+  if (f?.type === "checkbox") return !!displayValue;
+  return displayValue == null ? "" : displayValue;
+}
+
+function localFieldPatch(task, f, displayValue) {
+  const raw = editableCustomValue(f, displayValue);
+  const update = (fields = []) => fields.map((x) => x.id === f.id ? { ...x, value: displayValue, display: displayValue, rawValue: raw } : x);
+  return { customFields: update(task.customFields), allCustomFields: update(task.allCustomFields) };
 }
 
 function sortStatuses(statuses) {
@@ -81,18 +105,53 @@ function Assignee({ task }) {
   );
 }
 
-function ExperimentRow({ task, openTask }) {
+function EditableText({ value, onSave, multiline = false }) {
+  const [draft, setDraft] = useState(value || "");
+  const stop = (e) => e.stopPropagation();
+  const save = () => { if (draft !== (value || "")) onSave(draft); };
+  const common = { onClick: stop, value: draft, onChange: (e) => setDraft(e.target.value), onBlur: save, style: { width: "100%", minHeight: multiline ? 46 : 30, border: "1px solid transparent", borderRadius: 7, background: "transparent", color: C.ink, padding: "5px 7px", font: "inherit", fontWeight: 650 } };
+  return multiline ? <textarea {...common} style={{ ...common.style, resize: "vertical", fontWeight: 500, color: C.sub }} /> : <input {...common} />;
+}
+
+function EditableField({ task, names, fallback = "—", syncCustomField }) {
+  const f = fieldObj(task, names);
+  const value = f ? (f.display ?? f.value ?? "") : "";
+  const [draft, setDraft] = useState(value || "");
+  const options = cfOptions(f);
+  const canEdit = f?.id && ["text", "short_text", "url", "email", "phone", "number", "currency", "drop_down", "labels", "checkbox"].includes(f.type);
+  const save = (next = draft) => {
+    if (!canEdit || !syncCustomField) return;
+    syncCustomField(task.id, f.id, editableCustomValue(f, next), localFieldPatch(task, f, next), "Updated " + f.name);
+  };
+  if (!canEdit) return <span style={{ color: C.sub }}>{value || fallback}</span>;
+  if (f.type === "drop_down" && options.length) {
+    return <select onClick={(e) => e.stopPropagation()} value={draft || ""} onChange={(e) => { setDraft(e.target.value); save(e.target.value); }} style={{ width: "100%", height: 30, border: "1px solid " + C.line, borderRadius: 7, background: C.field, color: C.ink, fontSize: 12.5 }}><option value="">—</option>{options.map((o) => <option key={String(o.value)} value={o.label}>{o.label}</option>)}</select>;
+  }
+  return <EditableText value={draft || ""} onSave={save} multiline={names.some((n) => /summary/i.test(n))} />;
+}
+
+function EditableStatus({ task, statuses, syncTaskPatch }) {
+  return <select onClick={(e) => e.stopPropagation()} value={task.status} onChange={(e) => syncTaskPatch(task.id, { status: e.target.value }, "Updated status")} style={{ width: "100%", height: 30, border: "1px solid " + C.line, borderRadius: 7, background: C.field, color: C.ink, fontSize: 12.5 }}>{statuses.map((s) => <option key={s.name}>{s.name}</option>)}</select>;
+}
+
+function EditableAssignee({ task, syncTaskPatch }) {
+  const current = task.assignees?.[0]?.id ? String(task.assignees[0].id) : "";
+  const members = (D.MEMBERS || []).filter((m) => m.id);
+  return <select onClick={(e) => e.stopPropagation()} value={current} onChange={(e) => { const next = e.target.value; const rem = current ? [Number(current)] : []; const add = next ? [Number(next)] : []; const mem = members.find((m) => String(m.id) === next); syncTaskPatch(task.id, { assignees: { add, rem } }, "Updated assignee"); }} style={{ width: "100%", height: 30, border: "1px solid " + C.line, borderRadius: 7, background: C.field, color: C.ink, fontSize: 12.5 }}><option value="">Unassigned</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>;
+}
+
+function ExperimentRow({ task, openTask, statuses, syncTaskPatch, syncCustomField }) {
   return (
-    <div onClick={() => openTask(task.id)} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.3fr) 180px 140px 120px 150px 150px minmax(220px,1fr) 170px 150px", gap: 14, alignItems: "center", padding: "12px 14px", borderTop: "1px solid " + C.line, cursor: "pointer", fontSize: 12.5 }}>
-      <b style={{ fontSize: 13, lineHeight: 1.35 }}>{task.name}</b>
-      <span style={{ color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{appName(task) || "—"}</span>
-      <StatusPill task={task} />
-      <span style={{ color: C.sub }}>{testType(task)}</span>
-      <LinkCell value={platformLink(task)} />
-      <LinkCell value={reportLink(task)} />
-      <span style={{ color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summaryText(task) || "—"}</span>
-      <Assignee task={task} />
-      <span style={{ color: /yes/i.test(significant(task)) ? C.forest : /no/i.test(significant(task)) ? C.danger : C.faint2, fontWeight: 750 }}>{significant(task) || "—"}</span>
+    <div onClick={() => openTask(task.id)} style={{ display: "grid", gridTemplateColumns: "minmax(280px,1.3fr) 220px 150px 140px 150px 150px minmax(260px,1fr) 180px 150px", gap: 10, alignItems: "stretch", padding: "10px 14px", borderTop: "1px solid " + C.line, cursor: "pointer", fontSize: 12.5 }}>
+      <EditableText value={task.name} onSave={(v) => v.trim() && syncTaskPatch(task.id, { name: v.trim() }, "Updated task name")} />
+      <EditableField task={task} names={["App", "Application"]} syncCustomField={syncCustomField} />
+      <EditableStatus task={task} statuses={statuses} syncTaskPatch={syncTaskPatch} />
+      <EditableField task={task} names={["Test Type", "Type"]} syncCustomField={syncCustomField} />
+      <EditableField task={task} names={["Platform Link", "Firebase Link", "Console Link"]} fallback={platformLink(task) || "—"} syncCustomField={syncCustomField} />
+      <EditableField task={task} names={["Report Link", "AdMob Link"]} syncCustomField={syncCustomField} />
+      <EditableField task={task} names={["Summary", "Result Summary"]} fallback={summaryText(task) || "—"} syncCustomField={syncCustomField} />
+      <EditableAssignee task={task} syncTaskPatch={syncTaskPatch} />
+      <EditableField task={task} names={["Results are significant?", "Results significant?", "Significant"]} syncCustomField={syncCustomField} />
     </div>
   );
 }
@@ -168,21 +227,21 @@ function Board({ tests, statuses, openTask }) {
   );
 }
 
-function Table({ tests, openTask }) {
+function Table({ tests, statuses, openTask, syncTaskPatch, syncCustomField }) {
   const head = { padding: "9px 14px", fontSize: 10.5, fontWeight: 850, textTransform: "uppercase", letterSpacing: ".08em", color: C.faint, borderBottom: "1px solid " + C.line };
   return (
     <div style={{ ...card, overflow: "auto" }}>
       <div style={{ minWidth: 1560 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.3fr) 180px 140px 120px 150px 150px minmax(220px,1fr) 170px 150px", background: C.panel }}>
-          {["Name", "App", "Status", "Test Type", "Platform Link", "Report Link", "Summary", "Assignee", "Results are significant?"].map((h) => <div key={h} style={head}>{h}</div>)}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,1.3fr) 220px 150px 140px 150px 150px minmax(260px,1fr) 180px 150px", background: C.panel }}>
+          {["Task Name", "App", "Status", "Test Type", "Platform Link", "Report Link", "Summary", "Assignee", "Results significant?"].map((h) => <div key={h} style={head}>{h}</div>)}
         </div>
-        {tests.map((t) => <ExperimentRow key={t.id} task={t} openTask={openTask} />)}
+        {tests.map((t) => <ExperimentRow key={t.id} task={t} statuses={statuses} openTask={openTask} syncTaskPatch={syncTaskPatch} syncCustomField={syncCustomField} />)}
       </div>
     </div>
   );
 }
 
-export default function TestsTab({ tasks, q = "", openTask, taskLoadState }) {
+export default function TestsTab({ tasks, q = "", openTask, taskLoadState, syncTaskPatch, syncCustomField }) {
   const [view, setView] = useState("table");
   const [status, setStatus] = useState("All statuses");
   const tests = useMemo(() => {
@@ -210,7 +269,7 @@ export default function TestsTab({ tasks, q = "", openTask, taskLoadState }) {
       </div>
       {view === "list" && <GroupedList tests={shown} statuses={statuses} openTask={openTask} />}
       {view === "board" && <Board tests={shown} statuses={statuses} openTask={openTask} />}
-      {view === "table" && <Table tests={shown} openTask={openTask} />}
+      {view === "table" && <Table tests={shown} statuses={statuses} openTask={openTask} syncTaskPatch={syncTaskPatch} syncCustomField={syncCustomField} />}
       {shown.length === 0 && <Empty>No experiments match.</Empty>}
     </>
   );

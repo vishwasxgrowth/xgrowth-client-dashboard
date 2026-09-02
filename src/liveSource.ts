@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as demo from "./data";
 import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
-import { getFolderData, getTaskDetail, getTaskComments, updateTaskStatus } from "./clickup";
+import { getFolderData, getTaskDetail, getTaskComments, updateTask, updateTaskStatus, updateTaskCustomField } from "./clickup";
 import { loadTimeseries } from "./timeseriesSource";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -23,6 +23,7 @@ function activeMembersFromTasks(tasks) {
       const name = assignee && assignee.name;
       if (!name || map.has(name)) continue;
       map.set(name, {
+        id: assignee.id || null,
         name,
         initials: assignee.initials || null,
         color: assignee.color || null,
@@ -215,6 +216,6 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
       monetization: { status: "connected", detail: "Live AdMob mediation report loaded" },
       clickup: { status: TASKS_SOURCE === "clickup" ? "connected" : "error", detail: TASKS_SOURCE === "clickup" ? "ClickUp task snapshot loaded" : "Using demo tasks because ClickUp failed" },
     },
-    TODAY, MEMBERS, MEMBERS_ERROR, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTaskStatus, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed)
+    TODAY, MEMBERS, MEMBERS_ERROR, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTask, updateTaskStatus, updateTaskCustomField, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed)
   };
 }

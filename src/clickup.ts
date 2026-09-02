@@ -21,12 +21,22 @@ function fmtCF(f) {
     return String(v);
   } catch { return ""; }
 }
+function rawCF(f) {
+  return {
+    id: f.id,
+    name: f.name,
+    type: f.type,
+    value: f.value ?? null,
+    display: fmtCF(f),
+    typeConfig: f.type_config || null,
+  };
+}
 function mapTask(t, listName) {
   return {
     id: t.id, name: t.name,
     status: t.status?.status || "to do", statusColor: t.status?.color || "#9AA0AE",
     assignee: t.assignees?.[0]?.username || null,
-    assignees: (t.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials })),
+    assignees: (t.assignees || []).map((a) => ({ id: a.id, name: a.username, color: a.color, initials: a.initials })),
     priority: t.priority?.priority || null, priorityColor: t.priority?.color || null,
     due: t.due_date ? new Date(Number(t.due_date)).toISOString().slice(0, 10) : null,
     start: t.start_date ? new Date(Number(t.start_date)).toISOString().slice(0, 10) : null,
@@ -35,7 +45,8 @@ function mapTask(t, listName) {
     tags: (t.tags || []).map((x) => x.name),
     url: t.url, list: listName, app: null,
     desc: t.text_content || t.description || "",
-    customFields: (t.custom_fields || []).filter((f) => f.value !== undefined && f.value !== null && f.value !== "").map((f) => ({ name: f.name, value: fmtCF(f) })),
+    customFields: (t.custom_fields || []).filter((f) => f.value !== undefined && f.value !== null && f.value !== "").map((f) => ({ name: f.name, value: fmtCF(f), id: f.id, type: f.type, rawValue: f.value, typeConfig: f.type_config || null })),
+    allCustomFields: (t.custom_fields || []).map(rawCF),
     subtaskCount: (t.subtasks || []).length,
     commentCount: t.comment_count || 0,
   };
@@ -72,6 +83,7 @@ export async function getWorkspaceMembers() {
   const team = (d.teams || []).find((x) => x.id === TEAM_ID) || (d.teams || [])[0];
   const members = (team?.members || []).map((m) => m.user).filter(Boolean);
   return members.map((u) => ({
+    id: u.id,
     name: u.username || u.email || "Unknown",
     initials: (u.initials || "").trim() || null,
     color: u.color || null,
@@ -79,6 +91,12 @@ export async function getWorkspaceMembers() {
 }
 export async function getTaskDetail(taskId) { return cu("/task/" + taskId + "?include_subtasks=true"); }
 export async function getTaskComments(taskId) { const d = await cu("/task/" + taskId + "/comment"); return d.comments || []; }
+export async function updateTask(taskId, patch) {
+  return cu("/task/" + taskId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+}
 export async function updateTaskStatus(taskId, status) {
-  return cu("/task/" + taskId, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
+  return updateTask(taskId, { status });
+}
+export async function updateTaskCustomField(taskId, fieldId, value) {
+  return cu("/task/" + taskId + "/field/" + fieldId, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value }) });
 }

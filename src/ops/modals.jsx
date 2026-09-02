@@ -21,7 +21,51 @@ function cfValue(f) {
   } catch { return null; }
 }
 
-export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash }) {
+const PRIORITY_TO_ID = { urgent: 1, high: 2, normal: 3, low: 4 };
+const ID_TO_PRIORITY = { 1: "urgent", 2: "high", 3: "normal", 4: "low" };
+const toMs = (date) => date ? String(new Date(date + "T00:00:00").getTime()) : null;
+
+function cfOptions(f) {
+  const opts = f.type_config?.options || f.typeConfig?.options || [];
+  return opts.map((o) => ({ label: o.name || o.label || o.id, value: o.id ?? o.orderindex ?? o.label ?? o.name }));
+}
+
+function displayCustomField(f) {
+  return f.display ?? f.value ?? "";
+}
+
+function editableCustomValue(f, displayValue) {
+  if (f.type === "drop_down") {
+    const match = cfOptions(f).find((o) => o.label === displayValue || String(o.value) === String(displayValue));
+    return match ? match.value : displayValue;
+  }
+  if (f.type === "checkbox") return !!displayValue;
+  return displayValue == null ? "" : displayValue;
+}
+
+function EditableCustomField({ task, field, syncCustomField }) {
+  const [value, setValue] = useState(displayCustomField(field));
+  const options = cfOptions(field);
+  const canEdit = field.id && ["text", "short_text", "url", "email", "phone", "number", "currency", "drop_down", "labels", "checkbox"].includes(field.type);
+  const save = (next = value) => {
+    if (!canEdit || !syncCustomField) return;
+    const valueForClickUp = editableCustomValue(field, next);
+    const customFields = (task.customFields || []).map((f) => f.id === field.id ? { ...f, value: next, display: next, rawValue: valueForClickUp } : f);
+    const allCustomFields = (task.allCustomFields || []).map((f) => f.id === field.id ? { ...f, value: valueForClickUp, display: next, rawValue: valueForClickUp } : f);
+    syncCustomField(task.id, field.id, valueForClickUp, { customFields, allCustomFields }, "Updated " + field.name);
+  };
+  const base = { width: "100%", minHeight: 32, border: "1px solid " + C.line, borderRadius: 8, background: canEdit ? C.field : "transparent", color: C.ink, padding: "6px 8px", fontSize: 13 };
+  if (!canEdit) return <span style={{ fontWeight: 550, color: C.sub }}>{displayCustomField(field) || "—"}</span>;
+  if (field.type === "drop_down" && options.length) {
+    return <select value={value || ""} onChange={(e) => { setValue(e.target.value); save(e.target.value); }} style={base}><option value="">—</option>{options.map((o) => <option key={String(o.value)} value={o.label}>{o.label}</option>)}</select>;
+  }
+  if (field.type === "checkbox") {
+    return <input type="checkbox" checked={!!value} onChange={(e) => { setValue(e.target.checked); save(e.target.checked); }} />;
+  }
+  return <input value={value || ""} onChange={(e) => setValue(e.target.value)} onBlur={() => save()} style={base} />;
+}
+
+export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash, syncTaskPatch, syncCustomField }) {
   const ot = tasks.find((t) => t.id === openTask);
   const [detail, setDetail] = useState(null);
   const [comments, setComments] = useState(null);
@@ -37,26 +81,31 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
   if (!ot) return null;
   const doneReal = groupId(ot.status) === "done";
   const setStatus = (v) => {
-    patchTask(ot.id, { status: v });
-    if (!D.updateTaskStatus) { flash("Updated locally; ClickUp update is not connected"); return; }
-    D.updateTaskStatus(ot.id, v)
-      .then(() => flash("Updated in ClickUp"))
-      .catch((e) => flash("Updated locally; ClickUp update failed: " + errText(e)));
+    (syncTaskPatch || ((id, p) => patchTask(id, p)))(ot.id, { status: v }, "Updated status");
   };
   const d = detail || {};
   const descText = d.markdown_description || d.description || ot.desc || "";
+  const [title, setTitle] = useState(ot.name);
+  const [description, setDescription] = useState(descText);
+  useEffect(() => { setTitle(ot.name); }, [ot.id, ot.name]);
+  useEffect(() => { setDescription(descText); }, [ot.id, descText]);
   const codey = /[{}\[\]]|table-embed|waterfalls|"ad_|"name":/.test(descText);
-  const cfs = (d.custom_fields || []).map((f) => ({ name: f.name, value: cfValue(f) })).filter((x) => x.value != null && x.value !== "");
+  const rawCfs = (d.custom_fields || []).map((f) => ({ id: f.id, name: f.name, type: f.type, value: f.value ?? null, display: cfValue(f), type_config: f.type_config || null, typeConfig: f.type_config || null }));
+  const cfs = rawCfs.length ? rawCfs : (ot.allCustomFields || ot.customFields || []);
   const subtasks = d.subtasks || [];
-  const assignees = (d.assignees || []).map((a) => ({ name: a.username, color: a.color, initials: a.initials })).concat(ot.assignees && !d.assignees ? ot.assignees : []);
+  const assignees = (d.assignees || []).map((a) => ({ id: a.id, name: a.username, color: a.color, initials: a.initials })).concat(ot.assignees && !d.assignees ? ot.assignees : []);
   const statusOpts = D.LISTS_META && D.LISTS_META[ot.list] ? D.LISTS_META[ot.list].map((x) => x.name) : STATUSES;
   const isUrl = (v) => typeof v === "string" && /^https?:\/\//.test(v);
   const lbl = { fontSize: 10.5, textTransform: "uppercase", color: C.faint, fontWeight: 600, letterSpacing: ".03em" };
   const metaRow = { display: "grid", gridTemplateColumns: "120px 1fr", gap: 12, alignItems: "center", padding: "7px 0" };
+  const input = { width: "100%", height: 34, borderRadius: 8, border: "1px solid " + C.line, padding: "0 9px", fontSize: 13, background: C.field, color: C.ink };
+  const saveCore = (patch, label) => (syncTaskPatch || ((id, p) => { patchTask(id, p); flash(label + " locally"); }))(ot.id, patch, label);
+  const currentAssigneeId = assignees[0]?.id ? String(assignees[0].id) : "";
+  const memberOptions = D.MEMBERS || [];
 
   return (
     <div onClick={() => setOpenTask(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "center", justifyContent: "center", padding: "6vh 8vw", zIndex: 30 }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "84vw", height: "86vh", background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "92vw", maxWidth: 1460, height: "88vh", background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, display: "flex", flexDirection: "column", overflow: "hidden", fontFamily: C.sans }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 20px", borderBottom: "1px solid " + C.line }}>
           <span style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 20, color: "#fff", background: ot.statusColor || C.accent }}>{ot.status}</span>
           <span style={{ fontSize: 12, color: C.faint2 }}>{ot.list}</span>
@@ -65,23 +114,20 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
           <button onClick={() => setOpenTask(null)} style={{ border: "none", background: "none", cursor: "pointer", fontSize: 24, color: C.faint, lineHeight: 1 }}>×</button>
         </div>
 
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 400px", overflow: "hidden" }}>
+        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(0,1fr) 360px", overflow: "hidden" }}>
           {/* MAIN */}
           <div style={{ overflow: "auto", padding: "20px 24px" }}>
-            <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 14 }}>{ot.name}</div>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() && title !== ot.name && saveCore({ name: title.trim() }, "Updated task name")} style={{ ...input, height: 44, fontSize: 24, fontWeight: 800, marginBottom: 14, background: "transparent", borderColor: "transparent", paddingLeft: 0 }} />
             <div style={{ borderTop: "1px solid " + C.line, borderBottom: "1px solid " + C.line, marginBottom: 18 }}>
               <div style={metaRow}><span style={lbl}>Status</span><select value={ot.status} onChange={(e) => setStatus(e.target.value)} style={{ height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 13, background: C.field, color: C.ink, maxWidth: 260 }}>{statusOpts.map((sn) => <option key={sn}>{sn}</option>)}</select></div>
-              <div style={metaRow}><span style={lbl}>Assignees</span><div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{assignees.length ? assignees.map((a, i) => <span key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}><span style={{ width: 22, height: 22, borderRadius: "50%", background: a.color || C.faint2, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{a.initials || (a.name || "?")[0]}</span>{a.name}</span>) : <span style={{ color: C.faint2, fontSize: 13 }}>Unassigned</span>}</div></div>
-              <div style={metaRow}><span style={lbl}>Priority</span><span style={{ fontSize: 13, color: ot.priorityColor || C.ink, fontWeight: 600 }}>{ot.priority || "—"}</span></div>
-              <div style={metaRow}><span style={lbl}>Dates</span><span style={{ fontSize: 13 }}>{ot.start ? shortDate(ot.start) : "—"} → {ot.due ? shortDate(ot.due) : "—"}</span></div>
+              <div style={metaRow}><span style={lbl}>Assignee</span><select value={currentAssigneeId} onChange={(e) => { const nextId = e.target.value; const rem = currentAssigneeId ? [Number(currentAssigneeId)] : []; const add = nextId ? [Number(nextId)] : []; const mem = memberOptions.find((m) => String(m.id) === nextId); saveCore({ assignees: { add, rem } }, "Updated assignee"); if (mem) patchTask(ot.id, { assignee: mem.name, assignees: [mem] }); }} style={{ ...input, maxWidth: 280 }}><option value="">Unassigned</option>{memberOptions.filter((m) => m.id).map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+              <div style={metaRow}><span style={lbl}>Priority</span><select value={ot.priority || ""} onChange={(e) => { const priority = e.target.value || null; saveCore({ priority: priority ? PRIORITY_TO_ID[priority] : null }, "Updated priority"); patchTask(ot.id, { priority }); }} style={{ ...input, maxWidth: 180 }}><option value="">—</option>{["urgent", "high", "normal", "low"].map((p) => <option key={p}>{p}</option>)}</select></div>
+              <div style={metaRow}><span style={lbl}>Dates</span><div style={{ display: "flex", gap: 8, alignItems: "center" }}><input type="date" value={ot.start || ""} onChange={(e) => { patchTask(ot.id, { start: e.target.value || null }); saveCore({ start_date: toMs(e.target.value) }, "Updated start date"); }} style={{ ...input, maxWidth: 165 }} /><span style={{ color: C.faint2 }}>→</span><input type="date" value={ot.due || ""} onChange={(e) => { patchTask(ot.id, { due: e.target.value || null }); saveCore({ due_date: toMs(e.target.value) }, "Updated due date"); }} style={{ ...input, maxWidth: 165 }} /></div></div>
               {ot.tags && ot.tags.length > 0 && <div style={metaRow}><span style={lbl}>Tags</span><div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>{ot.tags.map((t) => <span key={t} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: C.panel, color: C.sub }}>{t}</span>)}</div></div>}
             </div>
 
             <div style={{ ...lbl, marginBottom: 8 }}>Description</div>
-            {descText ? (codey
-              ? <pre style={{ fontSize: 12, lineHeight: 1.5, background: C.panel, color: C.ink, border: "1px solid " + C.line, borderRadius: 8, padding: 14, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>{descText}</pre>
-              : <div style={{ fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{descText}</div>
-            ) : <div style={{ fontSize: 13, color: C.faint2 }}>{loading ? "Loading…" : "No description"}</div>}
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} onBlur={() => description !== descText && saveCore({ description }, "Updated description")} placeholder={loading ? "Loading..." : "Add description"} style={{ width: "100%", minHeight: codey ? 220 : 140, resize: "vertical", fontSize: codey ? 12 : 13.5, lineHeight: 1.55, background: C.panel, color: C.ink, border: "1px solid " + C.line, borderRadius: 8, padding: 14, fontFamily: codey ? "ui-monospace, SFMono-Regular, Menlo, monospace" : C.sans }} />
 
             {cfs.length > 0 && (
               <div style={{ marginTop: 20 }}>
@@ -90,7 +136,7 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
                   {cfs.map((f, i) => (
                     <div key={i} style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 10, padding: "9px 14px", borderTop: i ? "1px solid " + C.line : "none", fontSize: 13 }}>
                       <span style={{ color: C.sub }}>{f.name}</span>
-                      {isUrl(f.value) ? <a href={f.value} target="_blank" rel="noreferrer" style={{ color: C.accent, wordBreak: "break-all" }}>{f.value}</a> : <span style={{ fontWeight: 500 }}>{f.value}</span>}
+                      <EditableCustomField task={ot} field={f} syncCustomField={syncCustomField} />
                     </div>
                   ))}
                 </div>
@@ -159,7 +205,7 @@ export function CreateModal({ modal, setModal, commitCreate }) {
   );
 }
 
-export function TestDetail({ tasks, testId, setTestId, openCreate }) {
+export function TestDetail({ tasks, testId, setTestId, openCreate, syncTaskPatch, syncCustomField }) {
   const seed = tasks.find((t) => t.id === testId);
   const [detail, setDetail] = useState(null);
   const [units, setUnits] = useState(null);   // ad-unit metrics map
@@ -184,6 +230,8 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
   }, [testId]);
 
   const desc = (detail && (detail.markdown_description || detail.description)) || (seed && seed.desc) || "";
+  const testFields = ((detail && detail.custom_fields) || []).map((f) => ({ id: f.id, name: f.name, type: f.type, value: f.value ?? null, display: cfValue(f), type_config: f.type_config || null, typeConfig: f.type_config || null }));
+  const visibleTestFields = testFields.length ? testFields : (seed.allCustomFields || seed.customFields || []);
   const arms = useMemo(() => {
     const parsed = parseArms(desc);
     let variantCount = 0;
@@ -264,8 +312,8 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
   );
 
   return (
-    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 6vw", zIndex: 30, overflow: "auto" }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: "88vw", maxWidth: 1060, background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, fontFamily: C.sans }}>
+    <div onClick={() => setTestId(null)} style={{ position: "absolute", inset: 0, background: C.overlay, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "4vh 4vw", zIndex: 30, overflow: "auto" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: "94vw", maxWidth: 1380, background: C.surface, color: C.ink, border: "1px solid " + C.line, borderRadius: 10, boxShadow: C.shadow, fontFamily: C.sans }}>
         {/* header */}
         <div style={{ padding: "20px 24px", borderBottom: "1px solid " + C.line, background: C.panel }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -285,6 +333,19 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
         </div>
 
         <div style={{ padding: 24 }}>
+          {visibleTestFields.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <b style={{ fontSize: 14 }}>Task fields</b>
+              <div style={{ marginTop: 10, border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
+                {visibleTestFields.map((f, i) => (
+                  <div key={f.id || f.name || i} style={{ display: "grid", gridTemplateColumns: "190px 1fr", gap: 12, alignItems: "center", padding: "9px 14px", borderTop: i ? "1px solid " + C.line : "none", fontSize: 13 }}>
+                    <span style={{ color: C.sub }}>{f.name}</span>
+                    <EditableCustomField task={seed} field={f} syncCustomField={syncCustomField} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
             <b style={{ fontSize: 14 }}>{variants.length ? "Baseline vs " + variants.map((v) => v.label).join(" vs ") : "Config under test"}</b>
             <div style={{ flex: 1 }} />

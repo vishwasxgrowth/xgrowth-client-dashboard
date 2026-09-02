@@ -213,12 +213,22 @@ export default function XgrowthOps() {
   const flash = (text) => { clearTimeout(tt.current); setToast(text); tt.current = setTimeout(() => setToast(null), 2600); };
   const persist = (nextTasks, thr) => { const at = new Date().toISOString(); try { localStorage.setItem(SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, at, tasks: nextTasks == null ? tasks : nextTasks, threshold: thr == null ? threshold : thr })); setSavedAt(at); setHasSavedTasks(true); } catch (e) {} };
   const patchTask = (id, patch) => setTasks((ts) => { const next = ts.map((t) => (t.id === id ? { ...t, ...patch } : t)); persist(next); return next; });
+  const syncTaskPatch = (id, patch, label = "Updated task") => {
+    patchTask(id, patch);
+    if (!D.updateTask) { flash(label + " locally; ClickUp update is not connected"); return Promise.resolve(null); }
+    return D.updateTask(id, patch)
+      .then(() => { flash(label + " in ClickUp"); return true; })
+      .catch((e) => { flash(label + " locally; ClickUp update failed: " + errText(e)); return false; });
+  };
+  const syncCustomField = (taskId, fieldId, value, localPatch, label = "Updated field") => {
+    if (localPatch) patchTask(taskId, localPatch);
+    if (!D.updateTaskCustomField) { flash(label + " locally; ClickUp update is not connected"); return Promise.resolve(null); }
+    return D.updateTaskCustomField(taskId, fieldId, value)
+      .then(() => { flash(label + " in ClickUp"); return true; })
+      .catch((e) => { flash(label + " locally; ClickUp update failed: " + errText(e)); return false; });
+  };
   const syncStatus = (id, statusName, label) => {
-    patchTask(id, { status: statusName });
-    if (!D.updateTaskStatus) { flash(label + " locally; ClickUp update is not connected"); return; }
-    D.updateTaskStatus(id, statusName)
-      .then(() => flash(label + " in ClickUp"))
-      .catch((e) => flash(label + " locally; ClickUp update failed: " + errText(e)));
+    syncTaskPatch(id, { status: statusName }, label);
   };
   const loadClickUp = useCallback(() => {
     if (!D.loadClickUpTasks || taskLoadState === "loading") return;
@@ -281,7 +291,7 @@ export default function XgrowthOps() {
       priority: t.priority || "—", pfg: PRIO[t.priority] || C.faint2, pbg: PRIO_BG[t.priority] || C.panel, hasPriority: !!t.priority,
       due: t.due ? shortDate(t.due) : "—", dfg: overdue ? C.danger : C.faint, ainit: m.initials, acolor: m.color,
       nfg: done ? C.faint2 : C.ink, strike: done ? "line-through" : "none", check: done ? "✓" : "", checkBd: done ? C.forest : C.lineStrong, checkBg: done ? C.forest : C.field,
-      open: () => setOpenTask(t.id), toggle: (e) => { e.stopPropagation(); patchTask(t.id, { status: done ? "to do" : "done" }); flash("Updated locally; ClickUp status was not changed"); } };
+      open: () => setOpenTask(t.id), toggle: (e) => { e.stopPropagation(); syncStatus(t.id, done ? "to do" : "done", done ? "Reopened task" : "Marked complete"); } };
   }
 
   const pageTitle = NAV.find((n) => n.id === page).label;
@@ -332,15 +342,15 @@ export default function XgrowthOps() {
             </>
           )}
           {page === "apps" && <AppsTab {...{ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }} />}
-          {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId, taskLoadState }} />}
+          {page === "tests" && <TestsTab {...{ tasks, q, tfilter, setTfilter, openTask: setTestId, taskLoadState, syncTaskPatch, syncCustomField }} />}
           {page === "tasks" && <TasksTab {...{ tasks, taskView, onMove: (id, statusName) => syncStatus(id, statusName, "Moved to " + statusName), taskLoadState }} />}
           {page === "settings" && <SettingsTab {...{ tasks, threshold, setThreshold, persist, savedAt, resetSaved, connections, taskLoadState, taskError, loadClickUp, theme, setTheme }} />}
         </div>
       </div>
 
-      {openTask && <Drawer {...{ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash }} />}
+      {openTask && <Drawer {...{ tasks, openTask, setOpenTask, patchTask, setTasks, persist, flash, syncTaskPatch, syncCustomField }} />}
       {modal && <CreateModal {...{ modal, setModal, commitCreate }} />}
-      {testId && <TestDetail {...{ tasks, testId, setTestId, openCreate }} />}
+      {testId && <TestDetail {...{ tasks, testId, setTestId, openCreate, syncTaskPatch, syncCustomField }} />}
       {toast && <div style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: C.elevated, color: C.ink, border: "1px solid " + C.line, padding: "9px 16px", borderRadius: 8, fontSize: 12.5, fontWeight: 600, boxShadow: C.shadow }}>{toast}</div>}
     </div>
   );

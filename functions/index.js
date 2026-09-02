@@ -168,13 +168,32 @@ function isAllowedClickUpProxy(path, method) {
       /^\/api\/v2\/task\/[A-Za-z0-9_-]+\/comment$/.test(targetPath) ||
       targetPath === "/api/v2/team";
   }
-  return method === "PUT" && /^\/api\/v2\/task\/[A-Za-z0-9_-]+$/.test(targetPath);
+  if (method === "PUT") return /^\/api\/v2\/task\/[A-Za-z0-9_-]+$/.test(targetPath);
+  if (method === "POST") return /^\/api\/v2\/task\/[A-Za-z0-9_-]+\/field\/[A-Za-z0-9_-]+$/.test(targetPath);
+  return false;
 }
 function validateClickUpWrite(req) {
+  if (req.method === "POST") {
+    const body = req.body || {};
+    if (!body || !Object.prototype.hasOwnProperty.call(body, "value") || Object.keys(body).some((k) => k !== "value")) return "only custom field value updates are allowed";
+    const text = JSON.stringify(body.value);
+    if (text.length > 2048) return "custom field value too large";
+    return null;
+  }
   if (req.method !== "PUT") return null;
   const body = req.body || {};
-  if (!body || typeof body.status !== "string" || Object.keys(body).some((k) => k !== "status")) return "only task status updates are allowed";
-  if (!body.status.trim() || body.status.length > 80) return "invalid status";
+  const allowed = new Set(["name", "description", "status", "priority", "due_date", "start_date", "assignees"]);
+  if (!body || Object.keys(body).some((k) => !allowed.has(k))) return "unsupported task update field";
+  if (typeof body.name === "string" && (!body.name.trim() || body.name.length > 250)) return "invalid name";
+  if (typeof body.description === "string" && body.description.length > 12000) return "invalid description";
+  if (typeof body.status === "string" && (!body.status.trim() || body.status.length > 80)) return "invalid status";
+  if (body.priority != null && ![1, 2, 3, 4].includes(Number(body.priority))) return "invalid priority";
+  for (const key of ["due_date", "start_date"]) if (body[key] != null && !/^\d{10,13}$/.test(String(body[key]))) return "invalid " + key;
+  if (body.assignees != null) {
+    const a = body.assignees;
+    const valid = a && typeof a === "object" && ["add", "rem"].every((k) => Array.isArray(a[k] || []) && (a[k] || []).every((id) => /^\d+$/.test(String(id))));
+    if (!valid) return "invalid assignees";
+  }
   return null;
 }
 function validAccountName(account) {

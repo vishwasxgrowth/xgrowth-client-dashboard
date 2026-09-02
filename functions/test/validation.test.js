@@ -90,10 +90,11 @@ test("AdMob proxy exposes only mediation report generation", () => {
   assert.equal(_test.isAllowedAdmobProxy("/admob/v1/accounts/pub-123/apps", "GET"), false);
 });
 
-test("ClickUp proxy exposes only dashboard read paths and status writes", () => {
+test("ClickUp proxy exposes dashboard read paths and safe task writes", () => {
   assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/folder/901210858217", "GET"), true);
   assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/list/123/task", "GET"), true);
   assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/task/abcDEF123", "PUT"), true);
+  assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/task/abcDEF123/field/field_1", "POST"), true);
   assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/task/abcDEF123/comment", "POST"), false);
   assert.equal(_test.isAllowedClickUpProxy("/clickup/api/v2/user/123", "GET"), false);
 });
@@ -105,10 +106,13 @@ test("proxy queries are stripped to route-specific allowlists", () => {
   assert.deepEqual(_test.clickUpQueryKeys("/clickup/api/v2/task/abcDEF123"), ["include_subtasks"]);
 });
 
-test("ClickUp writes are status-only", () => {
+test("ClickUp writes are restricted to safe task and custom-field updates", () => {
   assert.equal(_test.validateClickUpWrite({ method: "PUT", body: { status: "done" } }), null);
-  assert.equal(_test.validateClickUpWrite({ method: "PUT", body: { status: "done", assignee: "someone" } }), "only task status updates are allowed");
+  assert.equal(_test.validateClickUpWrite({ method: "PUT", body: { name: "A better task", description: "Details", priority: 2 } }), null);
+  assert.equal(_test.validateClickUpWrite({ method: "PUT", body: { status: "done", unsafe: "someone" } }), "unsupported task update field");
   assert.equal(_test.validateClickUpWrite({ method: "PUT", body: { status: "" } }), "invalid status");
+  assert.equal(_test.validateClickUpWrite({ method: "POST", body: { value: "Ad size" } }), null);
+  assert.equal(_test.validateClickUpWrite({ method: "POST", body: { value: "Ad size", extra: true } }), "only custom field value updates are allowed");
 });
 
 test("account names and timing-safe comparisons reject unsafe input", () => {
