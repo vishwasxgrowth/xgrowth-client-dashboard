@@ -184,99 +184,82 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
   }, [testId]);
 
   const desc = (detail && (detail.markdown_description || detail.description)) || (seed && seed.desc) || "";
-  const arms = useMemo(() => parseArms(desc), [desc]);
+  const arms = useMemo(() => {
+    const parsed = parseArms(desc);
+    let variantCount = 0;
+    return parsed.map((arm, i) => {
+      if (arm.isBaseline) return { ...arm, label: "Baseline" };
+      variantCount += 1;
+      const totalVariants = parsed.filter((x) => !x.isBaseline).length;
+      return { ...arm, label: totalVariants > 1 ? "Variant " + variantCount : "Variant" };
+    });
+  }, [desc]);
   if (!seed) return null;
   const baseline = arms.find((a) => a.isBaseline) || arms[0];
   const variants = arms.filter((a) => a !== baseline);
   const variant = variants[vi] || null;
   const unitMap = units || {};
   const bM = baseline ? armMetrics(baseline, unitMap) : null;
-  const vM = variant ? armMetrics(variant, unitMap) : null;
+  const vMs = variants.map((a) => armMetrics(a, unitMap));
+  const vM = vMs[vi] || null;
 
   const pctD = (a, b) => (b ? ((a - b) / b) * 100 : 0);
   const lift = (bM && vM && bM.total && bM.total.revenue) ? pctD(vM.total.revenue, bM.total.revenue) : 0;
   const absD = (bM && vM && bM.total && vM.total) ? vM.total.revenue - bM.total.revenue : 0;
   const anyData = units && Object.keys(units).length > 0;
 
-  // metric rows (source-tagged like the 2c layout)
   const rowsRevenue = [
-    ["Estimated earnings", "sum across the arm's units", "AdMob", (t) => money(t.revenue), (t) => t.revenue, "higher better"],
-    ["eCPM", "earnings per 1,000 impressions", "AdMob", (t) => "$" + t.ecpm.toFixed(2), (t) => t.ecpm, "higher better"],
-    ["eRPM", "earnings per 1,000 requests", "Derived", (t) => "$" + t.erpm.toFixed(2), (t) => t.erpm, "higher better"],
-    ["Revenue per impression", "earnings ÷ impressions", "Derived", (t) => "$" + t.rpi.toFixed(4), (t) => t.rpi, "higher better"],
-    ["Revenue per click", "moves with CTR, read as context", "Derived", (t) => "$" + t.rpc.toFixed(2), (t) => t.rpc, "context"],
+    ["Estimated earnings", "", (t) => money(t.revenue), (t) => t.revenue, "higher better"],
+    ["eCPM", "", (t) => "$" + t.ecpm.toFixed(2), (t) => t.ecpm, "higher better"],
   ];
   const rowsServing = [
-    ["Ad requests", "", "AdMob", (t) => compact(t.requests), (t) => t.requests, "context"],
-    ["Matched requests", "requests a network filled", "AdMob", (t) => compact(t.matched), (t) => t.matched, "higher better"],
-    ["Match rate", "matched ÷ requests", "AdMob", (t) => pct(t.matchRate), (t) => t.matchRate, "higher better"],
-    ["Impressions", "ads actually rendered", "AdMob", (t) => compact(t.impressions), (t) => t.impressions, "higher better"],
-    ["Show rate", "impressions ÷ matched", "AdMob", (t) => pct(t.showRate), (t) => t.showRate, "higher better"],
-    ["Clicks", "ad clicks", "AdMob", (t) => compact(t.clicks), (t) => t.clicks, "context"],
-    ["Impression CTR", "clicks ÷ impressions", "AdMob", (t) => pct(t.ctr), (t) => t.ctr, "context"],
+    ["Ad requests", "", (t) => compact(t.requests), (t) => t.requests, "context"],
+    ["Match requests", "", (t) => compact(t.matched), (t) => t.matched, "higher better"],
+    ["Match rate", "", (t) => pct(t.matchRate), (t) => t.matchRate, "higher better"],
+    ["Impressions", "", (t) => compact(t.impressions), (t) => t.impressions, "higher better"],
+    ["Show rate", "", (t) => pct(t.showRate), (t) => t.showRate, "higher better"],
+    ["Clicks", "", (t) => compact(t.clicks), (t) => t.clicks, "context"],
+    ["CTR", "", (t) => pct(t.ctr), (t) => t.ctr, "context"],
   ];
   const rowsUser = [
-    ["Users in arm", "from Remote Config assignment", "Not wired", () => "n/a", null, "context"],
-    ["ARPU", "earnings ÷ users in arm", "Not wired", () => "n/a", null, "higher better"],
-    ["Sessions", "app sessions in the window", "Not wired", () => "n/a", null, "context"],
-    ["D1 retention", "needs the analytics SDK", "Not wired", () => "n/a", null, "higher better"],
+    ["ARPU", "", () => "n/a", null, "higher better"],
+    ["ARPV", "", () => "n/a", null, "higher better"],
+    ["D1 retention", "", () => "n/a", null, "higher better"],
+    ["D2 to 3 days retention", "", () => "n/a", null, "higher better"],
   ];
-  const srcColor = { AdMob: [C.infoBg, C.info], Derived: [C.panel, C.sub], Firebase: [C.warnBg, C.warn], "Not wired": [C.dangerBg, C.danger] };
-  const chg = (v, b, tone) => { const d = pctD(v, b); const up = d >= 0; const good = tone === "context" ? null : up; const col = good == null ? C.faint2 : good ? C.forest : C.danger; return <span style={{ color: col, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{d >= 0 ? "▲ +" : "▼ "}{d.toFixed(1)}%</span>; };
+  const chg = (v, b, tone) => { const d = pctD(v, b); const up = d >= 0; const good = tone === "context" ? null : up; const col = good == null ? C.faint2 : good ? C.forest : C.danger; return <span style={{ color: col, fontSize: 12.5, fontWeight: 750, fontVariantNumeric: "tabular-nums" }}>{d >= 0 ? "▲ +" : "▼ "}{d.toFixed(1)}%</span>; };
 
   const MetricTable = ({ title, rows }) => (
     <>
       <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: C.faint, padding: "16px 14px 8px" }}>{title}</div>
-      {rows.map(([name, subd, src, fmt, get, reading], i) => {
+      {rows.map(([name, subd, fmt, get, reading], i) => {
         const safe = (fn, arg) => { try { return arg ? fn(arg) : "n/a"; } catch (e) { return "n/a"; } };
         const bVal = get ? safe(fmt, bM && bM.total) : "n/a";
-        const vVal = get ? (vM ? safe(fmt, vM.total) : "—") : "n/a";
+        const variantVals = variants.map((_, idx) => get ? (vMs[idx] ? safe(fmt, vMs[idx].total) : "—") : "n/a");
         let change = <span style={{ color: C.faint2 }}>n/a</span>;
         try { if (get && bM && vM) change = chg(get(vM.total), get(bM.total), reading); } catch (e) {}
         return (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid " + C.line, fontSize: 13 }}>
+          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr repeat(" + Math.max(1, variants.length) + ",1fr) 100px", gap: 8, alignItems: "center", padding: "10px 14px", borderTop: "1px solid " + C.line, fontSize: 13 }}>
             <div><div style={{ fontWeight: 600 }}>{name}</div>{subd && <div style={{ fontSize: 11, color: C.faint2 }}>{subd}</div>}</div>
-            <span style={{ justifySelf: "start", fontSize: 10.5, fontWeight: 700, padding: "2px 7px", borderRadius: 6, background: (srcColor[src] || srcColor.Derived)[0], color: (srcColor[src] || srcColor.Derived)[1] }}>{src}</span>
             <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{bVal}</span>
-            <span style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{vVal}</span>
+            {variantVals.length ? variantVals.map((value, idx) => <span key={idx} style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{value}</span>) : <span style={{ textAlign: "right", color: C.faint2 }}>—</span>}
             <span style={{ textAlign: "right" }}>{change}</span>
-            <span style={{ textAlign: "right", fontSize: 11, color: C.faint2 }}>{reading}</span>
           </div>
         );
       })}
     </>
   );
 
-  const JsonCard = ({ arm, tone }) => (
+  const JsonCard = ({ arm }) => (
     <div style={{ border: "1px solid " + C.line, borderRadius: 12, overflow: "hidden" }}>
       <div style={{ padding: "10px 14px", borderBottom: "1px solid " + C.line, display: "flex", alignItems: "center", gap: 8, background: C.panel }}>
         <b style={{ fontSize: 12.5 }}>{arm ? arm.label : "—"}</b>
-        <span style={{ fontSize: 10.5, color: C.faint2 }}>{tone} arm</span>
         <div style={{ flex: 1 }} />
         {arm && (arm.error ? <span style={{ fontSize: 10.5, fontWeight: 700, color: C.danger, background: C.dangerBg, padding: "2px 7px", borderRadius: 6 }}>invalid JSON</span>
           : <span style={{ fontSize: 10.5, fontWeight: 700, color: C.forest, background: C.forestBg, padding: "2px 7px", borderRadius: 6 }}>✓ valid</span>)}
       </div>
       {arm && arm.error && <div style={{ fontSize: 11.5, color: C.danger, padding: "8px 14px", background: C.dangerBg }}>{arm.error}</div>}
       <pre style={{ margin: 0, padding: 14, fontSize: 11.5, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: 320, overflow: "auto" }}>{arm ? (arm.json ? JSON.stringify(arm.json, null, 2) : arm.raw) : "No config found"}</pre>
-    </div>
-  );
-
-  const UnitRows = ({ m, label }) => m && m.units.length > 0 && (
-    <div style={{ marginTop: 10 }}>
-      <div style={{ fontSize: 11, color: C.faint, fontWeight: 600, marginBottom: 4 }}>{label} · per ad unit</div>
-      <div style={{ border: "1px solid " + C.line, borderRadius: 10, overflow: "hidden" }}>
-        {m.units.map((u, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: i ? "1px solid " + C.line : "none", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.adUnit.split("/").pop()}</span>
-            <span style={{ textAlign: "right", color: u.found ? C.ink : C.warn }}>{u.found ? money(u.revenue) : "no data"}</span>
-            <span style={{ textAlign: "right" }}>{u.found ? compact(u.impressions) : "—"}</span>
-            <span style={{ textAlign: "right" }}>{u.found ? "$" + u.ecpm.toFixed(2) : "—"}</span>
-          </div>
-        ))}
-        <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr", gap: 8, padding: "8px 12px", borderTop: "2px solid " + C.line, fontSize: 12, fontVariantNumeric: "tabular-nums", fontWeight: 700, background: C.panel }}>
-          <span>Arm subtotal</span><span style={{ textAlign: "right" }}>{money(m.total.revenue)}</span><span style={{ textAlign: "right" }}>{compact(m.total.impressions)}</span><span style={{ textAlign: "right" }}>${m.total.ecpm.toFixed(2)}</span>
-        </div>
-      </div>
     </div>
   );
 
@@ -303,25 +286,22 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
 
         <div style={{ padding: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <b style={{ fontSize: 14 }}>Config under test</b>
-            <span style={{ fontSize: 11.5, color: C.faint2 }}>parsed from the ticket description · {arms.length} arm{arms.length === 1 ? "" : "s"}</span>
+            <b style={{ fontSize: 14 }}>{variants.length ? "Baseline vs " + variants.map((v) => v.label).join(" vs ") : "Config under test"}</b>
             <div style={{ flex: 1 }} />
-            {variants.length > 1 && <select value={vi} onChange={(e) => setVi(Number(e.target.value))} style={{ height: 30, borderRadius: 8, border: "1px solid " + C.line, background: C.field, color: C.ink, padding: "0 8px", fontSize: 12.5 }}>{variants.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>}
+            {variants.length > 1 && <select value={vi} onChange={(e) => setVi(Number(e.target.value))} style={{ height: 30, borderRadius: 8, border: "1px solid " + C.line, background: C.field, color: C.ink, padding: "0 8px", fontSize: 12.5 }}>{variants.map((v, i) => <option key={i} value={i}>Compare {v.label}</option>)}</select>}
           </div>
           {arms.length === 0 ? <Empty>No JSON config found in the description.</Empty> : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <JsonCard arm={baseline} tone="baseline" />
-              <JsonCard arm={variant} tone="variant" />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(" + Math.min(3, Math.max(1, arms.length)) + ",minmax(0,1fr))", gap: 14 }}>
+              {arms.map((arm, idx) => <JsonCard key={idx} arm={arm} />)}
             </div>
           )}
 
           <div style={{ marginTop: 20 }}>
             <b style={{ fontSize: 14 }}>All metrics</b>
-            <span style={{ fontSize: 11.5, color: C.faint2, marginLeft: 8 }}>AdMob per ad unit → arm subtotal; user-level needs analytics SDK</span>
             {loading ? <div style={{ padding: 20, color: C.faint2, fontSize: 13 }}>Loading AdMob data…</div> : (
               <div style={{ marginTop: 10, border: "1px solid " + C.line, borderRadius: 12, overflow: "hidden" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 90px 1fr 1fr 90px 90px", gap: 8, padding: "9px 14px", background: C.panel, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: C.faint, letterSpacing: ".03em" }}>
-                  <span>Metric</span><span>Source</span><span style={{ textAlign: "right" }}>Baseline</span><span style={{ textAlign: "right" }}>{variant ? variant.label : "Variant"}</span><span style={{ textAlign: "right" }}>Change</span><span style={{ textAlign: "right" }}>Reading</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr repeat(" + Math.max(1, variants.length) + ",1fr) 100px", gap: 8, padding: "9px 14px", background: C.panel, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: C.faint, letterSpacing: ".03em" }}>
+                  <span>Metric</span><span style={{ textAlign: "right" }}>Baseline</span>{variants.length ? variants.map((v, idx) => <span key={idx} style={{ textAlign: "right" }}>{v.label}</span>) : <span style={{ textAlign: "right" }}>Variant</span>}<span style={{ textAlign: "right" }}>Change</span>
                 </div>
                 <MetricTable title="Revenue & efficiency" rows={rowsRevenue} />
                 <MetricTable title="Ad serving" rows={rowsServing} />
@@ -329,7 +309,6 @@ export function TestDetail({ tasks, testId, setTestId, openCreate }) {
               </div>
             )}
             {err && <div style={{ marginTop: 10, fontSize: 12, color: C.warn }}>⚠ {err}</div>}
-            {!loading && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}><UnitRows m={bM} label={baseline && baseline.label} /><UnitRows m={vM} label={variant && variant.label} /></div>}
           </div>
         </div>
       </div>

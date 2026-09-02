@@ -221,7 +221,7 @@ export default function XgrowthOps() {
       .catch((e) => flash(label + " locally; ClickUp update failed: " + errText(e)));
   };
   const loadClickUp = useCallback(() => {
-    if (!D.loadClickUpTasks || taskLoadState === "loading" || taskLoadState === "ready") return;
+    if (!D.loadClickUpTasks || taskLoadState === "loading") return;
     setTaskLoadState("loading");
     setTaskError(null);
     setConnections((c) => ({ ...c, clickup: { status: "loading", detail: "Loading ClickUp task snapshot" } }));
@@ -231,7 +231,13 @@ export default function XgrowthOps() {
       updateDataSource({ TASKS: liveTasks, LISTS_META: listsMeta, MEMBERS: members, TASKS_SOURCE: "clickup", TASKS_ERROR: null, CONNECTIONS: nextConnections });
       setConnections(nextConnections);
       setTaskLoadState("ready");
-      if (!hasSavedTasks) setTasks((liveTasks || []).map((t) => ({ ...t })));
+      setTasks((prev) => {
+        const localDrafts = prev.filter((t) => String(t.id || "").startsWith("local-"));
+        const next = [...localDrafts, ...(liveTasks || []).map((t) => ({ ...t }))];
+        persist(next);
+        return next;
+      });
+      setHasSavedTasks(true);
     }).catch((e) => {
       const message = errText(e);
       const clickup = { status: "error", detail: message };
@@ -241,7 +247,7 @@ export default function XgrowthOps() {
       setTaskLoadState("error");
       setTaskError(message);
     });
-  }, [hasSavedTasks, taskLoadState]);
+  }, [taskLoadState]);
   useEffect(() => {
     if ((page === "dashboard" || page === "tasks" || page === "tests" || page === "settings") && taskLoadState === "idle") loadClickUp();
   }, [loadClickUp, page, taskLoadState]);

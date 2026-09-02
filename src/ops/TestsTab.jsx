@@ -1,41 +1,209 @@
 // @ts-nocheck
-import D from "../activeData";
-import { C, card, Empty, member, groupId, shortDate } from "./theme";
+import { useMemo, useState } from "react";
+import { C, card, Empty, member, shortDate } from "./theme";
 
-export default function TestsTab({ tasks, q, tfilter, setTfilter, openTask, taskLoadState }) {
-  if (taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp experiments...</Empty>;
-  if (taskLoadState === "error" && !tasks.length) return <Empty>ClickUp experiments are unavailable.</Empty>;
-  const tests = tasks.filter((t) => /test|experiment/i.test(t.list));
-  const counts = { All: tests.length };
-  tests.forEach((t) => { counts[t.status] = (counts[t.status] || 0) + 1; });
-  const statuses = [...new Map(tests.map((t) => [t.status, t.statusColor || C.faint2])).entries()];
-  const qq = q.trim().toLowerCase();
-  const shown = tests.filter((t) => (tfilter === "All" || t.status === tfilter) && (!qq || t.name.toLowerCase().includes(qq) || (t.assignee || "").toLowerCase().includes(qq)));
-  const prog = (t) => { if (groupId(t.status) === "done") return 1; if (!t.start || !t.due) return 0.4; const s0 = new Date(t.start).getTime(), e0 = new Date(t.due).getTime(), n0 = new Date(D.TODAY).getTime(); return Math.max(0.02, Math.min(1, (n0 - s0) / (e0 - s0 || 1))); };
-  const chip = (on, color) => ({ border: "1px solid " + (on ? (color || C.accent) : C.line), background: on ? (color ? color + "22" : C.accentBg) : C.field, color: on ? (color || C.accentDk) : C.sub, cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: "6px 12px", borderRadius: 20 });
-  const clean = (dd) => (dd || "").replace(/\[table-embed[^\]]*\]/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
+const TEST_LIST = "Tests & Experiments";
+const STATUS_ORDER = ["blocked", "live", "ready for review", "review results", "to do", "complete", "done"];
+
+function field(t, names) {
+  const wanted = names.map((n) => n.toLowerCase());
+  const cf = (t.customFields || []).find((x) => wanted.includes(String(x.name || "").toLowerCase()));
+  return cf ? cf.value : "";
+}
+
+function appName(t) {
+  return field(t, ["App", "Application"]) || t.appName || "";
+}
+
+function testType(t) {
+  return field(t, ["Test Type", "Type"]) || "—";
+}
+
+function platformLink(t) {
+  return field(t, ["Platform Link", "Firebase Link", "Console Link"]);
+}
+
+function reportLink(t) {
+  return field(t, ["Report Link", "AdMob Link"]);
+}
+
+function summaryText(t) {
+  const s = field(t, ["Summary", "Result Summary"]);
+  if (s) return s;
+  return (t.desc || "").replace(/\[table-embed[^\]]*\]/g, " ").replace(/\{[\s\S]*?\}/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function significant(t) {
+  return field(t, ["Results are significant?", "Results significant?", "Significant"]);
+}
+
+function sortStatuses(statuses) {
+  return [...statuses].sort((a, b) => {
+    const ai = STATUS_ORDER.indexOf(a.name.toLowerCase());
+    const bi = STATUS_ORDER.indexOf(b.name.toLowerCase());
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.name.localeCompare(b.name);
+  });
+}
+
+function progress(t) {
+  if (/done|complete/i.test(t.status)) return 1;
+  if (!t.start || !t.due) return 0.45;
+  const start = new Date(t.start).getTime();
+  const end = new Date(t.due).getTime();
+  const now = Date.now();
+  return Math.max(0.05, Math.min(1, (now - start) / (end - start || 1)));
+}
+
+function LinkCell({ value }) {
+  if (!value || value === "—") return <span style={{ color: C.faint2 }}>—</span>;
+  if (/^https?:\/\//.test(String(value))) return <a href={value} target="_blank" rel="noreferrer" style={{ color: C.accent, fontWeight: 650 }}>Open</a>;
+  return <span>{value}</span>;
+}
+
+function StatusPill({ task }) {
+  return <span style={{ display: "inline-flex", width: "max-content", maxWidth: 150, color: "#fff", background: task.statusColor || C.faint2, borderRadius: 999, padding: "3px 9px", fontSize: 10.5, fontWeight: 800, textTransform: "uppercase", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{task.status}</span>;
+}
+
+function Assignee({ task }) {
+  const m = member(task.assignee || "");
   return (
-    <>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <button onClick={() => setTfilter("All")} style={chip(tfilter === "All")}>All experiments · {counts.All}</button>
-        {statuses.map(([name, color]) => <button key={name} onClick={() => setTfilter(name)} style={chip(tfilter === name, color)}><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: color, marginRight: 6 }} />{name} · {counts[name]}</button>)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 14 }}>
-        {shown.map((t) => { const p = prog(t); const m = member(t.assignee || ""); const pc = groupId(t.status) === "done" ? C.forest : /block/i.test(t.status) ? C.danger : C.accent; return (
-          <div key={t.id} onClick={() => openTask(t.id)} style={{ ...card, padding: 0, cursor: "pointer", overflow: "hidden" }}>
-            <div style={{ height: 4, background: t.statusColor || C.faint2 }} />
-            <div style={{ padding: 16 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><b style={{ fontSize: 13.5, lineHeight: 1.3 }}>{t.name}</b><div style={{ flex: 1 }} />{(() => { const n = ((t.desc || "").match(/\{/g) || []).length; return n > 1 ? <span style={{ fontSize: 10, fontWeight: 700, color: C.accentDk, background: C.accentBg, padding: "2px 7px", borderRadius: 20 }}>{n} arms</span> : null; })()}<span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 20, color: "#fff", background: t.statusColor || C.faint2 }}>{t.status}</span></div>
-            <div style={{ fontSize: 12, color: C.sub, marginBottom: 12, lineHeight: 1.45, minHeight: 34, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{clean(t.desc) || "—"}</div>
-            <div style={{ height: 6, borderRadius: 4, background: C.panel, overflow: "hidden", marginBottom: 10 }}><div style={{ width: (p * 100) + "%", height: "100%", background: pc }} /></div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: C.faint2 }}>
-              <span style={{ width: 20, height: 20, borderRadius: "50%", background: m.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700 }}>{m.initials}</span>
-              <span>{t.assignee || "Unassigned"}</span><div style={{ flex: 1 }} /><span style={{ fontVariantNumeric: "tabular-nums" }}>{t.start ? shortDate(t.start) : "—"} → {t.due ? shortDate(t.due) : "—"}</span>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <span style={{ width: 22, height: 22, borderRadius: "50%", background: m.color, color: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, flex: "none" }}>{m.initials}</span>
+      <span style={{ minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{task.assignee || "Unassigned"}</span>
+    </span>
+  );
+}
+
+function ExperimentRow({ task, openTask }) {
+  return (
+    <div onClick={() => openTask(task.id)} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.3fr) 180px 140px 120px 150px 150px minmax(220px,1fr) 170px 150px", gap: 14, alignItems: "center", padding: "12px 14px", borderTop: "1px solid " + C.line, cursor: "pointer", fontSize: 12.5 }}>
+      <b style={{ fontSize: 13, lineHeight: 1.35 }}>{task.name}</b>
+      <span style={{ color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{appName(task) || "—"}</span>
+      <StatusPill task={task} />
+      <span style={{ color: C.sub }}>{testType(task)}</span>
+      <LinkCell value={platformLink(task)} />
+      <LinkCell value={reportLink(task)} />
+      <span style={{ color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summaryText(task) || "—"}</span>
+      <Assignee task={task} />
+      <span style={{ color: /yes/i.test(significant(task)) ? C.forest : /no/i.test(significant(task)) ? C.danger : C.faint2, fontWeight: 750 }}>{significant(task) || "—"}</span>
+    </div>
+  );
+}
+
+function GroupedList({ tests, statuses, openTask }) {
+  const [closed, setClosed] = useState(() => new Set(statuses.filter((s) => /done|complete/i.test(s.name)).map((s) => s.name)));
+  const toggle = (name) => setClosed((prev) => {
+    const next = new Set(prev);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    return next;
+  });
+  const groups = statuses.map((s) => ({ ...s, tasks: tests.filter((t) => t.status === s.name) })).filter((g) => g.tasks.length);
+  if (!groups.length) return <Empty>No experiments match.</Empty>;
+  return (
+    <div style={{ ...card, overflow: "hidden" }}>
+      {groups.map((g) => (
+        <div key={g.name}>
+          <button onClick={() => toggle(g.name)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "11px 14px", background: C.panel, border: 0, borderTop: "1px solid " + C.line, color: C.ink, cursor: "pointer", textAlign: "left" }}>
+            <span style={{ color: C.faint, fontSize: 12, width: 14 }}>{closed.has(g.name) ? "▸" : "▾"}</span>
+            <span style={{ width: 9, height: 9, borderRadius: "50%", background: g.color }} />
+            <b style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em" }}>{g.name}</b>
+            <span style={{ fontSize: 11, color: "#fff", background: g.color, borderRadius: 999, padding: "1px 7px" }}>{g.tasks.length}</span>
+          </button>
+          {!closed.has(g.name) && g.tasks.map((t) => (
+            <div key={t.id} onClick={() => openTask(t.id)} style={{ display: "grid", gridTemplateColumns: "minmax(260px,1fr) 180px 150px 170px 140px", gap: 14, alignItems: "center", padding: "12px 14px", borderTop: "1px solid " + C.line, borderLeft: "3px solid " + (t.statusColor || g.color), cursor: "pointer", fontSize: 12.5 }}>
+              <div style={{ minWidth: 0 }}><b style={{ display: "block", fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</b><span style={{ color: C.faint2 }}>{appName(t) || TEST_LIST}</span></div>
+              <span>{testType(t)}</span>
+              <Assignee task={t} />
+              <span style={{ color: C.sub, fontVariantNumeric: "tabular-nums" }}>{t.start ? shortDate(t.start) : "—"} → {t.due ? shortDate(t.due) : "—"}</span>
+              <span style={{ color: C.sub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summaryText(t) || "—"}</span>
             </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Board({ tests, statuses, openTask }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(" + Math.max(1, statuses.length) + ",minmax(260px,1fr))", gap: 12, overflowX: "auto", alignItems: "start" }}>
+      {statuses.map((s) => {
+        const list = tests.filter((t) => t.status === s.name);
+        return (
+          <div key={s.name} style={{ ...card, padding: 10, borderTop: "3px solid " + s.color, minHeight: 120 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: s.color }} />
+              <b style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: ".05em" }}>{s.name}</b>
+              <span style={{ fontSize: 11, color: "#fff", background: s.color, borderRadius: 999, padding: "1px 7px" }}>{list.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {list.map((t) => {
+                const p = progress(t);
+                return (
+                  <div key={t.id} onClick={() => openTask(t.id)} style={{ ...card, padding: 12, cursor: "pointer", borderLeft: "3px solid " + (t.statusColor || s.color) }}>
+                    <b style={{ display: "block", fontSize: 13, lineHeight: 1.3, marginBottom: 7 }}>{t.name}</b>
+                    <div style={{ color: C.sub, fontSize: 12, marginBottom: 9, minHeight: 18, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{appName(t) || testType(t)}</div>
+                    <div style={{ height: 6, borderRadius: 6, background: C.panel, overflow: "hidden", marginBottom: 9 }}><div style={{ height: "100%", width: (p * 100) + "%", background: /block/i.test(t.status) ? C.danger : C.forest }} /></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: C.faint2 }}>
+                      <Assignee task={t} />
+                      <div style={{ flex: 1 }} />
+                      <span>{t.due ? shortDate(t.due) : "—"}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ); })}
+        );
+      })}
+    </div>
+  );
+}
+
+function Table({ tests, openTask }) {
+  const head = { padding: "9px 14px", fontSize: 10.5, fontWeight: 850, textTransform: "uppercase", letterSpacing: ".08em", color: C.faint, borderBottom: "1px solid " + C.line };
+  return (
+    <div style={{ ...card, overflow: "auto" }}>
+      <div style={{ minWidth: 1560 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(260px,1.3fr) 180px 140px 120px 150px 150px minmax(220px,1fr) 170px 150px", background: C.panel }}>
+          {["Name", "App", "Status", "Test Type", "Platform Link", "Report Link", "Summary", "Assignee", "Results are significant?"].map((h) => <div key={h} style={head}>{h}</div>)}
+        </div>
+        {tests.map((t) => <ExperimentRow key={t.id} task={t} openTask={openTask} />)}
       </div>
+    </div>
+  );
+}
+
+export default function TestsTab({ tasks, q = "", openTask, taskLoadState }) {
+  const [view, setView] = useState("table");
+  const [status, setStatus] = useState("All statuses");
+  const tests = useMemo(() => {
+    const exact = tasks.filter((t) => String(t.list || "").toLowerCase() === TEST_LIST.toLowerCase());
+    return exact.length ? exact : tasks.filter((t) => /test|experiment/i.test([t.list, t.name, t.desc].join(" ")));
+  }, [tasks]);
+  const qq = q.trim().toLowerCase();
+  const statuses = useMemo(() => sortStatuses([...new Map(tests.map((t) => [t.status, { name: t.status, color: t.statusColor || C.faint2 }])).values()]), [tests]);
+  const activeStatus = statuses.some((s) => s.name === status) ? status : "All statuses";
+  const shown = tests.filter((t) => (activeStatus === "All statuses" || t.status === activeStatus) && (!qq || [t.name, t.assignee, appName(t), testType(t), summaryText(t)].some((v) => String(v || "").toLowerCase().includes(qq))));
+  const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: C.field, color: C.ink };
+
+  if (taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp experiments...</Empty>;
+  if (taskLoadState === "error" && !tasks.length) return <Empty>ClickUp experiments are unavailable.</Empty>;
+  return (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", background: C.panel, border: "1px solid " + C.line, borderRadius: 8, padding: 3 }}>
+          {["list", "board", "table"].map((id) => <button key={id} onClick={() => setView(id)} style={{ border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: view === id ? 750 : 600, padding: "5px 14px", borderRadius: 6, background: view === id ? C.surface : "transparent", color: view === id ? C.ink : C.sub, textTransform: "capitalize" }}>{id}</button>)}
+        </div>
+        <select value={activeStatus} onChange={(e) => setStatus(e.target.value)} style={sel}>
+          {["All statuses", ...statuses.map((s) => s.name)].map((s) => <option key={s}>{s}</option>)}
+        </select>
+        <span style={{ color: C.faint2, fontSize: 12 }}>{shown.length} experiments from {TEST_LIST}</span>
+      </div>
+      {view === "list" && <GroupedList tests={shown} statuses={statuses} openTask={openTask} />}
+      {view === "board" && <Board tests={shown} statuses={statuses} openTask={openTask} />}
+      {view === "table" && <Table tests={shown} openTask={openTask} />}
       {shown.length === 0 && <Empty>No experiments match.</Empty>}
     </>
   );
