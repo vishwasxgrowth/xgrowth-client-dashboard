@@ -40,7 +40,6 @@ const CACHE = {
 const SYNTHETIC_APPDAILY_HEADER = ["DATE", "APP", "ESTIMATED_EARNINGS", "IMPRESSIONS", "AD_REQUESTS", "MATCHED_REQUESTS", "IMPRESSION_CTR"];
 
 const tokenCache = {}; // clientId -> { token, exp }
-const tsCache = {};   // reports timeseries cache
 
 async function accessTokenFor(clientId) {
   const now = Date.now();
@@ -418,7 +417,6 @@ exports.xgClientApi = onRequest(
         const validation = validateTimeseriesPayload(bodyText, clientId);
         if (validation) { fail(res, 400, validation); return; }
         await storage.bucket(BUCKET).file(clientId + ".json").save(bodyText, { contentType: "application/json", resumable: false });
-        delete tsCache[clientId];
         await invalidateReportArtifacts(clientId);
         noStore(res);
         res.json({ ok: true, bytes });
@@ -450,17 +448,10 @@ exports.xgClientApi = onRequest(
       if (path === "/timeseries") {
         if (!isRead) { fail(res, 405, "GET only"); return; }
         const clientId = readClientId(req, res); if (!clientId) return;
-        const now = Date.now();
-        if (tsCache[clientId] && tsCache[clientId].exp > now) {
-          cache(res, CACHE.short);
-          res.set("Content-Type", "application/json").send(tsCache[clientId].body);
-          return;
-        }
         try {
           const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
           const body = buf.toString("utf8");
-          tsCache[clientId] = { body, exp: now + 30 * 60 * 1000 };
-          cache(res, CACHE.short);
+          noStore(res);
           res.set("Content-Type", "application/json").send(body);
         } catch (e) {
           fail(res, 404, "no timeseries pushed yet for " + clientId);

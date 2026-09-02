@@ -46,7 +46,9 @@ allowed origins are configured.
   persists that recovered report input, and exposes report readiness in
   `/report-manifest`.
 - The dashboard's default production data path reads `/timeseries`, avoiding
-  startup AdMob and ClickUp API calls.
+  startup AdMob and ClickUp API calls. The core `/timeseries` response is served
+  with `no-store` so a successful Sheet push is visible on the dashboard
+  immediately; heavier report HTML and app icons remain cached separately.
 - ClickUp task lists, task details, comments, and status updates still go
   through the backend proxy, but task-list loading is deferred until Tasks,
   Tests, or Settings is opened.
