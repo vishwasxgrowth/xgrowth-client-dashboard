@@ -13,9 +13,11 @@ function fmtCF(f) {
     if (f.type === "drop_down") { const o = (f.type_config?.options || []).find((x) => x.orderindex === v || x.id === v); return o ? o.name : String(v); }
     if (f.type === "labels") { const opts = f.type_config?.options || []; return (Array.isArray(v) ? v : [v]).map((id) => (opts.find((o) => o.id === id) || {}).label || id).join(", "); }
     if (f.type === "date") return new Date(Number(v)).toLocaleDateString();
-    if (f.type === "users") return (Array.isArray(v) ? v : [v]).map((u) => u.username || u).join(", ");
+    if (f.type === "tasks" || f.type === "list_relationship") return (Array.isArray(v) ? v : [v]).map((x) => x?.name || x?.id || x).join(", ");
+    if (f.type === "users") return (Array.isArray(v) ? v : [v]).map((u) => u?.username || u?.email || u).join(", ");
     if (f.type === "currency") return "$" + v;
-    if (typeof v === "object") return JSON.stringify(v);
+    if (Array.isArray(v)) return v.map((x) => x?.name || x?.label || x?.username || x?.id || x).join(", ");
+    if (typeof v === "object") return v.name || v.label || v.username || v.id || JSON.stringify(v);
     return String(v);
   } catch { return ""; }
 }

@@ -30,7 +30,14 @@ function reportLink(t) {
 function summaryText(t) {
   const s = field(t, ["Summary", "Result Summary"]);
   if (s) return s;
-  return (t.desc || "").replace(/\[table-embed[^\]]*\]/g, " ").replace(/\{[\s\S]*?\}/g, " ").replace(/\s+/g, " ").trim();
+  const cleaned = (t.desc || "")
+    .replace(/\[table-embed[^\]]*\]/g, " ")
+    .replace(/\{[\s\S]*?\}/g, " ")
+    .replace(/\|\s*\d+:\d+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const goal = cleaned.match(/Experiment Goal[\s:.-]*(.*)/i);
+  return (goal ? goal[1] : cleaned).slice(0, 220).trim();
 }
 
 function significant(t) {
