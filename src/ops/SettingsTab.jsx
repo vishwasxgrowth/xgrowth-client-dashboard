@@ -1,30 +1,9 @@
 // @ts-nocheck
 import D from "../activeData";
-import { C, TIERS, card, Pill, groupId, since } from "./theme";
-
-const FOLDER_ID = import.meta.env.VITE_CLIENT_CLICKUP_FOLDER || "";
-
-const badgeFor = (status) => {
-  if (status === "connected") return { status: "Connected", sfg: C.forest, sbg: C.forestBg };
-  if (status === "loading" || status === "idle") return { status: "On demand", sfg: C.sub, sbg: C.panel };
-  if (status === "warning") return { status: "Limited", sfg: C.warn, sbg: C.warnBg };
-  if (status === "unavailable" || status === "error") return { status: "Action needed", sfg: C.warn, sbg: C.warnBg };
-  return { status: "Unknown", sfg: C.sub, sbg: C.panel };
-};
+import { C, TIERS, card } from "./theme";
 
 export default function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSaved, connections, taskLoadState, taskError, loadClickUp, theme, setTheme }) {
-  const monetization = connections && connections.monetization ? connections.monetization : { status: D.SOURCE_ERROR ? "error" : "connected", detail: D.SOURCE_ERROR || "Monetization source loaded" };
-  const clickup = connections && connections.clickup ? connections.clickup : { status: taskLoadState === "ready" ? "connected" : taskLoadState || "idle", detail: taskError || "ClickUp task snapshot loads on demand" };
-  const mb = badgeFor(monetization.status);
-  const cb = badgeFor(clickup.status);
-  const folderLabel = FOLDER_ID ? "Folder " + FOLDER_ID : "Configured folder";
-  const connectionRows = [
-    { mark: "M", color: C.accent, name: "Monetization feed", detail: monetization.detail + " · " + D.APPS.length + " apps", ...mb },
-    { mark: "C", color: C.plum, name: "ClickUp", detail: clickup.status === "connected" ? folderLabel + " · " + tasks.length + " tasks synced" : clickup.detail, ...cb },
-    { mark: "F", color: C.forest, name: "Firebase", detail: "Backend proxy and cached report feed", status: "Configured", sfg: C.forest, sbg: C.forestBg },
-    { mark: "M", color: C.info, name: "Meta Audience Network", detail: "Placement mapping incomplete for 6 apps", status: "Action needed", sfg: C.warn, sbg: C.warnBg },
-  ];
-  const members = D.MEMBERS.map((m) => ({ ...m, open: tasks.filter((t) => t.assignee === m.name && groupId(t.status) !== "done").length, role: m.name === "Vishwas HD" ? "Ad Ops Lead" : m.name === "Nadiya Hassan" ? "Ad Ops" : m.name === "Igor Aliev" ? "SDK / Dev" : "Product" }));
+  const members = D.MEMBERS;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 720 }}>
       <div style={{ ...card, padding: 16 }}>
@@ -36,12 +15,8 @@ export default function SettingsTab({ tasks, threshold, setThreshold, persist, s
           ))}
         </div>
       </div>
-      <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Connections</div>
-        {connectionRows.map((c) => <div key={c.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid " + C.line }}><div style={{ width: 34, height: 34, borderRadius: 8, background: c.color, color: C.inverse, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>{c.mark}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{c.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{c.detail}</div></div><Pill fg={c.sfg} bg={c.sbg}>{c.status}</Pill></div>)}
-        {clickup.status !== "connected" && D.loadClickUpTasks && <div style={{ padding: "12px 16px" }}><button onClick={loadClickUp} disabled={taskLoadState === "loading"} style={{ height: 32, padding: "0 12px", borderRadius: 8, border: "1px solid " + C.line, background: C.field, color: C.sub, cursor: taskLoadState === "loading" ? "default" : "pointer", fontSize: 12.5, fontWeight: 700 }}>{taskLoadState === "loading" ? "Loading..." : "Load ClickUp now"}</button></div>}
-      </div>
       <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Team</div>
-        {members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid " + C.line }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{m.role}</div></div><span style={{ fontSize: 12, color: C.sub, fontVariantNumeric: "tabular-nums" }}>{m.open} open</span></div>)}
+        {members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid " + C.line }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color || C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials || String(m.name || "?").slice(0, 2).toUpperCase()}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div></div></div>)}
       </div>
       <div style={{ ...card, padding: 16 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>How apps are tiered</div>
@@ -52,10 +27,6 @@ export default function SettingsTab({ tasks, threshold, setThreshold, persist, s
             <span style={{ fontSize: 12.5, color: C.sub }}>{rng} / 30 days · flag a {T.drop}% drop · respond {T.respond}</span>
           </div>); })}
         <div style={{ fontSize: 11.5, color: C.faint2, marginTop: 10 }}>Apps below about $50/day are held out of percentage alerts, so tiny-base swings don't create noise.</div>
-      </div>
-      <div style={{ ...card, padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>Workspace changes</div><div style={{ fontSize: 11.5, color: C.faint2 }}>{savedAt ? "Saved " + since(savedAt) : "No local changes yet"}</div></div>
-        <button onClick={resetSaved} style={{ height: 34, padding: "0 14px", borderRadius: 8, border: "1px solid " + C.line, background: C.field, cursor: "pointer", fontSize: 13, fontWeight: 600, color: C.sub }}>Reset to snapshot</button>
       </div>
     </div>
   );

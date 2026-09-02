@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { useMemo, useState } from "react";
-import D from "../activeData";
 import { C, card, Empty, member, shortDate } from "./theme";
 
 const TEST_LIST = "Tests & Experiments";
@@ -135,24 +134,19 @@ function EditableStatus({ task, statuses, syncTaskPatch }) {
   return <select onClick={(e) => e.stopPropagation()} value={task.status} onChange={(e) => syncTaskPatch(task.id, { status: e.target.value }, "Updated status")} style={{ width: "100%", height: 30, border: "1px solid " + C.line, borderRadius: 7, background: C.field, color: C.ink, fontSize: 12.5 }}>{statuses.map((s) => <option key={s.name}>{s.name}</option>)}</select>;
 }
 
-function EditableAssignee({ task, syncTaskPatch }) {
-  const current = task.assignees?.[0]?.id ? String(task.assignees[0].id) : "";
-  const members = (D.MEMBERS || []).filter((m) => m.id);
-  return <select onClick={(e) => e.stopPropagation()} value={current} onChange={(e) => { const next = e.target.value; const rem = current ? [Number(current)] : []; const add = next ? [Number(next)] : []; const mem = members.find((m) => String(m.id) === next); syncTaskPatch(task.id, { assignees: { add, rem } }, "Updated assignee"); }} style={{ width: "100%", height: 30, border: "1px solid " + C.line, borderRadius: 7, background: C.field, color: C.ink, fontSize: 12.5 }}><option value="">Unassigned</option>{members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>;
-}
-
-function ExperimentRow({ task, openTask, statuses, syncTaskPatch, syncCustomField }) {
+function ExperimentRow({ task, openTask, columns }) {
+  const cell = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", alignSelf: "center" };
   return (
-    <div onClick={() => openTask(task.id)} style={{ display: "grid", gridTemplateColumns: "minmax(280px,1.3fr) 220px 150px 140px 150px 150px minmax(260px,1fr) 180px 150px", gap: 10, alignItems: "stretch", padding: "10px 14px", borderTop: "1px solid " + C.line, cursor: "pointer", fontSize: 12.5 }}>
-      <EditableText value={task.name} onSave={(v) => v.trim() && syncTaskPatch(task.id, { name: v.trim() }, "Updated task name")} />
-      <EditableField task={task} names={["App", "Application"]} syncCustomField={syncCustomField} />
-      <EditableStatus task={task} statuses={statuses} syncTaskPatch={syncTaskPatch} />
-      <EditableField task={task} names={["Test Type", "Type"]} syncCustomField={syncCustomField} />
-      <EditableField task={task} names={["Platform Link", "Firebase Link", "Console Link"]} fallback={platformLink(task) || "—"} syncCustomField={syncCustomField} />
-      <EditableField task={task} names={["Report Link", "AdMob Link"]} syncCustomField={syncCustomField} />
-      <EditableField task={task} names={["Summary", "Result Summary"]} fallback={summaryText(task) || "—"} syncCustomField={syncCustomField} />
-      <EditableAssignee task={task} syncTaskPatch={syncTaskPatch} />
-      <EditableField task={task} names={["Results are significant?", "Results significant?", "Significant"]} syncCustomField={syncCustomField} />
+    <div onClick={() => openTask(task.id)} style={{ display: "grid", gridTemplateColumns: columns.map((c) => c.width + "px").join(" "), alignItems: "center", minHeight: 58, borderTop: "1px solid " + C.line, cursor: "pointer", fontSize: 12.5 }}>
+      <div style={{ ...cell, padding: "11px 14px" }}><b style={{ display: "block", fontSize: 13, lineHeight: 1.25, whiteSpace: "normal" }}>{task.name}</b></div>
+      <div style={{ ...cell, padding: "11px 14px", color: C.sub }}>{appName(task) || "—"}</div>
+      <div style={{ ...cell, padding: "11px 14px" }}><StatusPill task={task} /></div>
+      <div style={{ ...cell, padding: "11px 14px", color: C.sub }}>{testType(task)}</div>
+      <div style={{ ...cell, padding: "11px 14px" }}><LinkCell value={platformLink(task)} /></div>
+      <div style={{ ...cell, padding: "11px 14px" }}><LinkCell value={reportLink(task)} /></div>
+      <div style={{ ...cell, padding: "11px 14px", color: C.sub }}>{summaryText(task) || "—"}</div>
+      <div style={{ ...cell, padding: "11px 14px" }}><Assignee task={task} /></div>
+      <div style={{ ...cell, padding: "11px 14px", color: /yes/i.test(significant(task)) ? C.forest : /no/i.test(significant(task)) ? C.danger : C.faint2, fontWeight: 700 }}>{significant(task) || "—"}</div>
     </div>
   );
 }
@@ -228,15 +222,50 @@ function Board({ tests, statuses, openTask }) {
   );
 }
 
-function Table({ tests, statuses, openTask, syncTaskPatch, syncCustomField }) {
-  const head = { padding: "9px 14px", fontSize: 10.5, fontWeight: 850, textTransform: "uppercase", letterSpacing: ".08em", color: C.faint, borderBottom: "1px solid " + C.line };
+const DEFAULT_COLUMNS = [
+  { key: "name", label: "Task Name", width: 310 },
+  { key: "app", label: "App", width: 230 },
+  { key: "status", label: "Status", width: 150 },
+  { key: "type", label: "Test Type", width: 140 },
+  { key: "platform", label: "Platform Link", width: 150 },
+  { key: "report", label: "Report Link", width: 150 },
+  { key: "summary", label: "Summary", width: 320 },
+  { key: "assignee", label: "Assignee", width: 190 },
+  { key: "significant", label: "Results significant?", width: 170 },
+];
+
+function Table({ tests, openTask }) {
+  const [columns, setColumns] = useState(DEFAULT_COLUMNS);
+  const template = columns.map((c) => c.width + "px").join(" ");
+  const startResize = (index, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = columns[index].width;
+    const onMove = (ev) => {
+      const width = Math.max(90, startWidth + ev.clientX - startX);
+      setColumns((prev) => prev.map((c, i) => i === index ? { ...c, width } : c));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const head = { position: "relative", padding: "10px 14px", fontSize: 10.5, fontWeight: 850, textTransform: "uppercase", letterSpacing: ".08em", color: C.faint, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" };
   return (
     <div style={{ ...card, overflow: "auto" }}>
-      <div style={{ minWidth: 1560 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(280px,1.3fr) 220px 150px 140px 150px 150px minmax(260px,1fr) 180px 150px", background: C.panel }}>
-          {["Task Name", "App", "Status", "Test Type", "Platform Link", "Report Link", "Summary", "Assignee", "Results significant?"].map((h) => <div key={h} style={head}>{h}</div>)}
+      <div style={{ minWidth: columns.reduce((sum, c) => sum + c.width, 0) }}>
+        <div style={{ display: "grid", gridTemplateColumns: template, background: C.panel, position: "sticky", top: 0, zIndex: 2 }}>
+          {columns.map((col, idx) => (
+            <div key={col.key} style={head}>
+              {col.label}
+              <span onMouseDown={(e) => startResize(idx, e)} title="Drag to resize column" style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 7, cursor: "col-resize", borderRight: "1px solid " + C.lineStrong }} />
+            </div>
+          ))}
         </div>
-        {tests.map((t) => <ExperimentRow key={t.id} task={t} statuses={statuses} openTask={openTask} syncTaskPatch={syncTaskPatch} syncCustomField={syncCustomField} />)}
+        {tests.map((t) => <ExperimentRow key={t.id} task={t} columns={columns} openTask={openTask} />)}
       </div>
     </div>
   );
@@ -270,7 +299,7 @@ export default function TestsTab({ tasks, q = "", openTask, taskLoadState, syncT
       </div>
       {view === "list" && <GroupedList tests={shown} statuses={statuses} openTask={openTask} />}
       {view === "board" && <Board tests={shown} statuses={statuses} openTask={openTask} />}
-      {view === "table" && <Table tests={shown} statuses={statuses} openTask={openTask} syncTaskPatch={syncTaskPatch} syncCustomField={syncCustomField} />}
+      {view === "table" && <Table tests={shown} openTask={openTask} />}
       {shown.length === 0 && <Empty>No experiments match.</Empty>}
     </>
   );

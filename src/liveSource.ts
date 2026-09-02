@@ -1,7 +1,7 @@
 // @ts-nocheck
 import * as demo from "./data";
 import { generateMediationReport, adUnitReport, fetchAppIcons } from "./admob";
-import { getFolderData, getTaskDetail, getTaskComments, updateTask, updateTaskStatus, updateTaskCustomField } from "./clickup";
+import { getFolderData, getTaskDetail, getTaskComments, getWorkspaceMembers, updateTask, updateTaskStatus, updateTaskCustomField } from "./clickup";
 import { loadTimeseries } from "./timeseriesSource";
 
 function gm(v) { if (!v) return 0; if (typeof v.doubleValue === "number") return v.doubleValue; if (v.microsValue) return Number(v.microsValue) / 1e6; if (v.integerValue) return Number(v.integerValue); return 0; }
@@ -10,7 +10,7 @@ const rd = (d) => ({ year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: 
 const MS = 86400000;
 
 const tierForRevenue = (rev30) => rev30 >= 15000 ? "Tier 1" : rev30 >= 3000 ? "Tier 2" : rev30 >= 500 ? "Tier 3" : "Tier 4";
-const WORKFLOW_LISTS = new Set(["Mediation Setup", "SDK Integration", "Tests & Experiments", "Ongoing"]);
+const WORKFLOW_LISTS = new Set(["App Portfolio", "App Porfolio", "Mediation Setup", "SDK Integration", "Tests & Experiments", "Ongoing"]);
 
 function activeMembersFromTasks(tasks) {
   const map = new Map();
@@ -111,9 +111,18 @@ function appsFromTimeseries(ts) {
 
 async function loadClickUpWorkspace(folderId) {
   const { listsMeta, tasks } = await getFolderData(folderId, WORKFLOW_LISTS);
-  const activeMembers = activeMembersFromTasks(tasks);
-  const members = activeMembers.length ? activeMembers : demo.MEMBERS;
-  const membersError = activeMembers.length ? null : "No assigned ClickUp members found in the loaded workflow sections";
+  let members = [];
+  let membersError = null;
+  try {
+    members = await getWorkspaceMembers();
+  } catch (e) {
+    members = activeMembersFromTasks(tasks);
+    membersError = "Using active assignees because ClickUp members could not be loaded";
+  }
+  if (!members.length) {
+    members = demo.MEMBERS;
+    membersError = membersError || "Using fallback members because ClickUp returned no members";
+  }
   return { tasks, listsMeta, members, membersError };
 }
 
@@ -205,9 +214,18 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
   } catch (e) {
     console.warn("[clickup] could not load tasks, falling back to demo data:", e);
   }
-  const activeMembers = activeMembersFromTasks(TASKS);
-  const MEMBERS = activeMembers.length ? activeMembers : demo.MEMBERS;
-  const MEMBERS_ERROR = activeMembers.length ? null : "No assigned ClickUp members found in the loaded workflow sections";
+  let MEMBERS = [];
+  let MEMBERS_ERROR = null;
+  try {
+    MEMBERS = await getWorkspaceMembers();
+  } catch (e) {
+    MEMBERS = activeMembersFromTasks(TASKS);
+    MEMBERS_ERROR = "Using active assignees because ClickUp members could not be loaded";
+  }
+  if (!MEMBERS.length) {
+    MEMBERS = demo.MEMBERS;
+    MEMBERS_ERROR = MEMBERS_ERROR || "Using fallback members because ClickUp returned no members";
+  }
   return {
     IS_LIVE: true,
     SOURCE_MODE: "live-admob",

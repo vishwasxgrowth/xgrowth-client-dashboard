@@ -296,8 +296,6 @@ export default function XgrowthOps() {
 
   const pageTitle = NAV.find((n) => n.id === page).label;
   const overdueAll = tasks.filter((t) => t.due && t.due < D.TODAY && groupId(t.status) !== "done");
-  const clickupLabel = connections.clickup && connections.clickup.status === "connected" ? "ClickUp connected" : connections.clickup && connections.clickup.status === "loading" ? "Loading ClickUp" : "ClickUp on demand";
-
   return (
     <div className="xg-app-shell" style={{ display: "flex", height: "100vh", background: C.bg, color: C.ink, fontFamily: C.sans, fontVariantNumeric: "tabular-nums", overflow: "hidden", position: "relative" }}>
       <div style={{ width: collapsed ? 62 : "fit-content", minWidth: collapsed ? 62 : 188, flex: "none", background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "14px 10px", transition: "width .15s", backdropFilter: "blur(18px)" }}>
@@ -319,12 +317,11 @@ export default function XgrowthOps() {
             </button>); })}
         </div>
         <div style={{ flex: 1 }} />
-        {!collapsed && <div style={{ fontSize: 10.5, color: C.faint2, padding: "8px 10px", whiteSpace: "nowrap" }}>{clickupLabel}</div>}
       </div>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ minHeight: 64, flex: "none", borderBottom: "1px solid " + C.line, background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", flexWrap: "wrap", backdropFilter: "blur(18px)" }}>
-          <div><div className="xg-display" style={{ fontSize: 28, lineHeight: "34px", fontWeight: 760 }}>{pageTitle}</div>{page === "tasks" && <div style={{ fontSize: 11.5, color: C.faint }}>{clickupLabel}</div>}</div>
+          <div><div className="xg-display" style={{ fontSize: 28, lineHeight: "34px", fontWeight: 760 }}>{pageTitle}</div></div>
           <div style={{ flex: 1 }} />
           <button onClick={() => openCreate(null)} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 740, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>
           {page === "apps" && <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />}

@@ -188,9 +188,6 @@ function ExecutiveSummary({ p }) {
         <div>
           <div style={{ color: C.brand, fontSize: 12, fontWeight: 800, letterSpacing: ".05em", textTransform: "uppercase" }}>Executive summary</div>
           <h1 className="xg-display" style={{ margin: "8px 0 0", fontSize: 32, lineHeight: "40px", fontWeight: 780 }}>Overview</h1>
-          <p style={{ margin: "10px 0 0", maxWidth: 540, color: C.darkSub, fontSize: 14, lineHeight: "22px" }}>
-            Portfolio movement using the latest Sheet push. Every headline metric carries a comparison window so the number has context.
-          </p>
           <div style={{ marginTop: 18, color: C.darkMuted, fontSize: 12, fontWeight: 600 }}>Data through {p.latestDate}</div>
         </div>
         <div className="xg-overview-metrics">
