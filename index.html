@@ -21,6 +21,264 @@
         }
       })();
     </script>
+    <!--
+      LOADER — critical CSS, inlined on purpose.
+      ------------------------------------------------------------------
+      This must paint on the first frame of the HTML response, before the
+      ~100 kB (gzip) JS bundle has downloaded, parsed and mounted React.
+      Anything living in design.css is inside that bundle, so it is far too
+      late to cover the blank-screen window. Hence the duplicated token block
+      below: it mirrors design.css, but is available immediately.
+
+      src/BrandedLoader.jsx renders this exact markup with these exact class
+      names, so the handoff from boot splash to React has no visual seam.
+
+      Design follows the console itself rather than a generic spinner:
+        - the sidebar brand lockup (lime xG tile, radius 10, + caps subtitle)
+        - the uppercase letterspaced group-header treatment
+        - skeleton rows carrying the 3px left status stripe used by every
+          task row, cycling accent / warn / forest like the real groups
+      The result reads as the console assembling itself.
+    -->
+    <style>
+      #xg-boot, .xgl {
+        --xgl-bg: #f0f0ed;
+        --xgl-surface: #ffffff;
+        --xgl-surface2: #f7f7f3;
+        --xgl-line: #e2e8f0;
+        --xgl-ink: #0e0f0c;
+        --xgl-faint2: #8a9383;
+        --xgl-accent: #0343ef;
+        --xgl-warn: #b45309;
+        --xgl-forest: #15803d;
+        --xgl-brand: #beff74;
+        --xgl-shimmer: rgba(255, 255, 255, 0.85);
+      }
+      :root[data-theme="dark"] #xg-boot,
+      :root[data-theme="dark"] .xgl {
+        --xgl-bg: #0e0f0c;
+        --xgl-surface: #181a15;
+        --xgl-surface2: #20231d;
+        --xgl-line: rgba(255, 255, 255, 0.12);
+        --xgl-ink: #ffffff;
+        --xgl-faint2: rgba(240, 240, 237, 0.45);
+        --xgl-accent: #beff74;
+        --xgl-warn: #fdba74;
+        --xgl-forest: #86d69c;
+        --xgl-brand: #beff74;
+        --xgl-shimmer: rgba(255, 255, 255, 0.07);
+      }
+
+      .xgl {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+        font-family: Montserrat, Inter, ui-sans-serif, system-ui, sans-serif;
+        color: var(--xgl-ink);
+      }
+      .xgl--full {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        justify-content: center;
+        background: var(--xgl-bg);
+        padding: 24px;
+      }
+      .xgl--panel {
+        gap: 18px;
+        padding: 26px 22px;
+        border: 1px solid var(--xgl-line);
+        border-radius: 16px;
+        background: var(--xgl-surface);
+        box-shadow: 0 8px 22px rgba(14, 15, 12, 0.06);
+      }
+      .xgl--panel .xgl-row { background: var(--xgl-surface2); }
+      .xgl--compact { gap: 12px; padding: 14px 2px; }
+
+      /* Sidebar brand lockup: 32px lime tile at radius 10, weight 800 mark,
+         16px/760 wordmark over the 10px .04em caps line. */
+      .xgl-brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+      }
+      .xgl-tile {
+        width: 40px;
+        height: 40px;
+        flex: none;
+        border-radius: 12px;
+        background: var(--xgl-brand);
+        color: #2b2f26;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 15px;
+        font-weight: 800;
+        animation: xgl-breathe 2.4s ease-in-out infinite;
+      }
+      .xgl-word { line-height: 1.15; }
+      .xgl-word b {
+        display: block;
+        font-size: 17px;
+        font-weight: 760;
+        white-space: nowrap;
+      }
+      .xgl-word span {
+        display: block;
+        margin-top: 1px;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--xgl-faint2);
+      }
+
+      /* Group-header treatment: status dot + uppercase letterspaced label. */
+      .xgl-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 10.5px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: var(--xgl-faint2);
+      }
+      .xgl-dot {
+        width: 7px;
+        height: 7px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--xgl-accent);
+        animation: xgl-blink 1.5s ease-in-out infinite;
+      }
+
+      /* Skeleton rows carrying the 3px left status stripe. */
+      .xgl-rows {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+      }
+      /* Full-screen and modal states are centred stacks, so they get a cap.
+         Inside a tab card the rows should span it, like the real list. */
+      .xgl--full .xgl-rows { max-width: 430px; }
+      .xgl-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 14px;
+        border-radius: 0 10px 10px 0;
+        background: var(--xgl-surface);
+        border: 1px solid var(--xgl-line);
+        border-left: 3px solid var(--xgl-accent);
+        opacity: 0;
+        animation: xgl-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+      .xgl-row:nth-child(2) {
+        border-left-color: var(--xgl-warn);
+        animation-delay: 0.09s;
+      }
+      .xgl-row:nth-child(3) {
+        border-left-color: var(--xgl-forest);
+        animation-delay: 0.18s;
+      }
+      .xgl-col {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .xgl-bar,
+      .xgl-av,
+      .xgl-chip {
+        position: relative;
+        overflow: hidden;
+        background: var(--xgl-line);
+      }
+      .xgl-bar::after,
+      .xgl-av::after,
+      .xgl-chip::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, var(--xgl-shimmer), transparent);
+        transform: translateX(-100%);
+        animation: xgl-shimmer 1.6s ease-in-out infinite;
+      }
+      .xgl-row:nth-child(2) .xgl-bar::after,
+      .xgl-row:nth-child(2) .xgl-av::after,
+      .xgl-row:nth-child(2) .xgl-chip::after { animation-delay: 0.12s; }
+      .xgl-row:nth-child(3) .xgl-bar::after,
+      .xgl-row:nth-child(3) .xgl-av::after,
+      .xgl-row:nth-child(3) .xgl-chip::after { animation-delay: 0.24s; }
+
+      .xgl-bar { height: 10px; border-radius: 5px; }
+      .xgl-bar--t { width: 52%; }
+      .xgl-bar--s { width: 28%; height: 8px; }
+      .xgl-av {
+        width: 22px;
+        height: 22px;
+        flex: none;
+        border-radius: 50%;
+      }
+      .xgl-chip {
+        width: 54px;
+        height: 14px;
+        flex: none;
+        border-radius: 20px;
+      }
+      .xgl--compact .xgl-row { padding: 9px 12px; }
+      .xgl--compact .xgl-bar { height: 9px; }
+      .xgl--compact .xgl-rows { max-width: 340px; }
+
+      @keyframes xgl-breathe {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(0.93); }
+      }
+      @keyframes xgl-blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.25; }
+      }
+      @keyframes xgl-rise {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: none; }
+      }
+      @keyframes xgl-shimmer {
+        0% { transform: translateX(-100%); }
+        60%, 100% { transform: translateX(100%); }
+      }
+
+      #xg-boot { transition: opacity 240ms ease; }
+      #xg-boot.xg-boot--done { opacity: 0; pointer-events: none; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .xgl-tile,
+        .xgl-dot,
+        .xgl-bar::after,
+        .xgl-av::after,
+        .xgl-chip::after { animation: none; }
+        .xgl-row { opacity: 1; animation: none; }
+      }
+    </style>
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
+  <body>
+    <div id="root"></div>
+    <div id="xg-boot" class="xgl xgl--full" role="status" aria-live="polite">
+      <div class="xgl-brand">
+        <div class="xgl-tile">xG</div>
+        <div class="xgl-word"><b>xGrowth</b><span>Monetization console</span></div>
+      </div>
+      <div class="xgl-status"><span class="xgl-dot"></span>Preparing console</div>
+      <div class="xgl-rows">
+        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
+        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
+        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
