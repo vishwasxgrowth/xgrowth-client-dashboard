@@ -8,6 +8,7 @@ import { setDataSource } from "./activeData";
 import * as demo from "./data";
 import { buildCachedSource, buildLiveSource } from "./liveSource";
 import XgrowthOps from "./XgrowthOps";
+import BrandedLoader, { dismissBootSplash } from "./BrandedLoader";
 
 const NAME = import.meta.env.VITE_CLIENT_NAME || "Your Dashboard";
 const ACCOUNT = import.meta.env.VITE_CLIENT_ADMOB_ACCOUNT || "";
@@ -30,8 +31,6 @@ function Login({ onSignIn }) {
     </div>
   );
 }
-function Center({ children }) { return <div className="xg-app-shell" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--xg-faint)", fontFamily: "var(--xg-font-sans)" }}>{children}</div>; }
-
 function Shell() {
   const auth = useContext(AuthContext);
   const usingDevToken = !!DEV_TOKEN || !!PROXY;
@@ -39,6 +38,11 @@ function Shell() {
   const isSignedIn = usingDevToken || auth.isSignedIn;
   const isLoading = usingDevToken ? false : auth.isLoading;
   const [ready, setReady] = useState(false);
+
+  // React has painted, so the index.html boot splash has done its job. The
+  // <BrandedLoader /> below picks up with identical markup, so nothing flickers.
+  useEffect(() => { dismissBootSplash(); }, []);
+
   useEffect(() => {
     if (!isSignedIn) return;
     if (!PROXY && !token) return; // token only required when calling AdMob directly
@@ -64,9 +68,9 @@ function Shell() {
       });
     return () => { live = false; };
   }, [isSignedIn, token]);  // proxy mode fetches with empty token
-  if (isLoading) return <Center>…</Center>;
+  if (isLoading) return <BrandedLoader full label="Checking access" />;
   if (!isSignedIn) return <Login onSignIn={auth.signIn} />;
-  if (!ready) return <Center>Loading your dashboard…</Center>;
+  if (!ready) return <BrandedLoader full label="Preparing dashboard" />;
   return <div style={{ height: "100vh" }}><XgrowthOps /></div>;
 }
 createRoot(document.getElementById("root")).render(<AuthProvider><Shell /></AuthProvider>);
