@@ -1,4 +1,5 @@
 // @ts-nocheck
+import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
 import D from "../activeData";
 import { tsAggregate, tsAppNames } from "../timeseriesSource";
@@ -376,7 +377,7 @@ export default function OverviewTab({ ts, tsError, tasks, taskAppMap, taskLoadSt
   }, [ts, tasks, taskAppMap]);
 
   if (tsError) return <Empty>Dashboard data unavailable: {tsError}</Empty>;
-  if (!ts || !model) return <Empty>Loading overview...</Empty>;
+  if (!ts || !model) return <BrandedLoader panel label="Loading overview" />;
 
   const p = model.portfolio;
   const latest = p.latest || {};

@@ -1,4 +1,5 @@
 // @ts-nocheck
+import BrandedLoader from "../BrandedLoader";
 import { useEffect, useMemo, useState } from "react";
 import D from "../activeData";
 import { parseArms, armMetrics } from "../testConfig";
@@ -156,7 +157,7 @@ export function Drawer({ tasks, openTask, setOpenTask, patchTask, setTasks, pers
           {/* ACTIVITY / COMMENTS (right rail) */}
           <div style={{ borderLeft: "1px solid " + C.line, background: C.panel, overflow: "auto", padding: "18px 18px" }}>
             <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14 }}>Activity {comments ? "· " + comments.length : ""}</div>
-            {loading && !comments && <div style={{ fontSize: 13, color: C.faint2 }}>Loading…</div>}
+            {loading && !comments && <BrandedLoader compact label="Loading comments" />}
             {comments && comments.length === 0 && <div style={{ fontSize: 13, color: C.faint2 }}>No comments yet.</div>}
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               {(comments || []).map((c) => (
@@ -359,7 +360,7 @@ export function TestDetail({ tasks, testId, setTestId, openCreate, syncTaskPatch
 
           <div style={{ marginTop: 20 }}>
             <b style={{ fontSize: 14 }}>All metrics</b>
-            {loading ? <div style={{ padding: 20, color: C.faint2, fontSize: 13 }}>Loading AdMob data…</div> : (
+            {loading ? <BrandedLoader compact label="Loading AdMob data" /> : (
               <div style={{ marginTop: 10, border: "1px solid " + C.line, borderRadius: 12, overflow: "hidden" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr repeat(" + Math.max(1, variants.length) + ",1fr) 100px", gap: 8, padding: "9px 14px", background: C.panel, fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", color: C.faint, letterSpacing: ".03em" }}>
                   <span>Metric</span><span style={{ textAlign: "right" }}>Baseline</span>{variants.length ? variants.map((v, idx) => <span key={idx} style={{ textAlign: "right" }}>{v.label}</span>) : <span style={{ textAlign: "right" }}>Variant</span>}<span style={{ textAlign: "right" }}>Change</span>

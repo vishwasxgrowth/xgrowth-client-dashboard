@@ -2,6 +2,7 @@
 // Applications tab: the app list (timeseries.json-backed, see
 // ../timeseriesSource.js) and the per-app detail page (stat cards,
 // interactive charts, embedded Tasks).
+import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
 import D from "../activeData";
 import { tsAppNames, tsRangeIdx, tsAggregate, tsDayRowAt } from "../timeseriesSource";
@@ -22,7 +23,7 @@ const APPS_LIST_COLS = [
 // same feed the Dashboard/Trends tab reads, so the two never disagree.
 export default function AppsTab({ ts, tsError, range, setRange, q, selApps, appId, setAppId, appTab, setAppTab, tasks, taskView, taskAppMap }) {
   if (tsError) return <Empty>Applications data unavailable: {tsError}</Empty>;
-  if (!ts) return <Empty>Loading application data…</Empty>;
+  if (!ts) return <BrandedLoader panel label="Loading applications" />;
 
   const days = range === "y" ? 1 : range === "30" ? 30 : 7;
   const r = tsRangeIdx(ts, days);

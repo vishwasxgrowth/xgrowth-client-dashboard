@@ -1,4 +1,5 @@
 // @ts-nocheck
+import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
 import D from "../activeData";
 import { C, GROUPS, LISTS, card, Pill, Empty, groupId } from "./theme";
@@ -105,7 +106,7 @@ export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, 
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: C.field, color: C.ink };
   const drop = (k) => { if (dragId && useReal) onMove(dragId, k); setDragId(null); setOverCol(null); };
 
-  if (!scopeApp && taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp tasks...</Empty>;
+  if (!scopeApp && taskLoadState === "loading" && !tasks.length) return <BrandedLoader panel label="Loading ClickUp tasks" />;
   if (!scopeApp && taskLoadState === "error" && !tasks.length) return <Empty>ClickUp tasks are unavailable.</Empty>;
   if (scopeApp && !tasks.length) return <Empty>No tasks matched to this app.</Empty>;
   return (

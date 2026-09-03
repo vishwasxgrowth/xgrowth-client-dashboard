@@ -1,4 +1,5 @@
 // @ts-nocheck
+import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
 import { C, card, Empty, member, shortDate } from "./theme";
 
@@ -284,7 +285,7 @@ export default function TestsTab({ tasks, q = "", openTask, taskLoadState, syncT
   const shown = tests.filter((t) => (activeStatus === "All statuses" || t.status === activeStatus) && (!qq || [t.name, t.assignee, appName(t), testType(t), summaryText(t)].some((v) => String(v || "").toLowerCase().includes(qq))));
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: C.field, color: C.ink };
 
-  if (taskLoadState === "loading" && !tasks.length) return <Empty>Loading ClickUp experiments...</Empty>;
+  if (taskLoadState === "loading" && !tasks.length) return <BrandedLoader panel label="Loading experiments" />;
   if (taskLoadState === "error" && !tasks.length) return <Empty>ClickUp experiments are unavailable.</Empty>;
   return (
     <>
