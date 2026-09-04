@@ -2,6 +2,17 @@
 import D from "../activeData";
 import { C, TIERS, card } from "./theme";
 
+const STATUS_TONE = {
+  connected: { label: "Connected", fg: C.forest, bg: C.forestBg },
+  idle: { label: "Ready", fg: C.sub, bg: C.field },
+  loading: { label: "Loading", fg: C.sub, bg: C.field },
+  warning: { label: "Partial", fg: C.warn, bg: C.warnBg },
+  error: { label: "Error", fg: C.danger, bg: C.dangerBg },
+  "not-configured": { label: "Not connected", fg: C.faint2, bg: C.field },
+  unavailable: { label: "Unavailable", fg: C.faint2, bg: C.field },
+};
+const CONNECTION_LABEL = { monetization: "Monetization feed", admob: "AdMob", clickup: "ClickUp" };
+
 export default function SettingsTab({ tasks, threshold, setThreshold, persist, savedAt, resetSaved, connections, taskLoadState, taskError, loadClickUp, theme, setTheme }) {
   const members = D.MEMBERS;
   return (
@@ -15,8 +26,28 @@ export default function SettingsTab({ tasks, threshold, setThreshold, persist, s
           ))}
         </div>
       </div>
+      <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Connections</div>
+        {["monetization", "admob", "clickup"].map((key) => {
+          const c = (connections || {})[key];
+          if (!c) return null;
+          const tone = STATUS_TONE[c.status] || STATUS_TONE.unavailable;
+          return (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderTop: "1px solid " + C.line }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{CONNECTION_LABEL[key] || key}</div>
+                <div style={{ fontSize: 11.5, color: C.faint2 }}>{c.detail}</div>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 20, color: tone.fg, background: tone.bg, whiteSpace: "nowrap" }}>{tone.label}</span>
+            </div>
+          );
+        })}
+      </div>
       <div style={card}><div style={{ padding: "14px 16px", fontSize: 14, fontWeight: 700, borderBottom: "1px solid " + C.line }}>Team</div>
-        {members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid " + C.line }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color || C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials || String(m.name || "?").slice(0, 2).toUpperCase()}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div></div></div>)}
+        {taskLoadState === "not-configured"
+          ? <div style={{ padding: "18px 16px", fontSize: 12.5, color: C.faint, lineHeight: 1.55 }}>Team members come from the ClickUp workspace linked to this client. None is linked yet.</div>
+          : !members.length
+            ? <div style={{ padding: "18px 16px", fontSize: 12.5, color: C.faint }}>No team members loaded.</div>
+            : members.map((m) => <div key={m.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid " + C.line }}><div style={{ width: 32, height: 32, borderRadius: "50%", background: m.color || C.accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{m.initials || String(m.name || "?").slice(0, 2).toUpperCase()}</div><div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 600 }}>{m.name}</div></div></div>)}
       </div>
       <div style={{ ...card, padding: 16 }}>
         <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>How apps are tiered</div>

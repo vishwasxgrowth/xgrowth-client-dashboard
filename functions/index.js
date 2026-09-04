@@ -6,12 +6,22 @@ const { onRequest } = require("firebase-functions/v2/https");
 const { defineSecret } = require("firebase-functions/params");
 const { Storage } = require("@google-cloud/storage");
 const crypto = require("node:crypto");
+const { verifyIdToken, registry, clientEntry, mayAccess, publicEntry } = require("./auth");
 
 const GOOGLE_CLIENT_ID = defineSecret("XG_GOOGLE_CLIENT_ID");
 const GOOGLE_CLIENT_SECRET = defineSecret("XG_GOOGLE_CLIENT_SECRET");
 const CLICKUP_TOKEN = defineSecret("XG_CLICKUP_TOKEN");
 const REFRESH_TOKENS = defineSecret("XG_REFRESH_TOKENS"); // JSON: {"jedyapps":"1//0...", ...}
 const PUSH_SECRET = defineSecret("XG_PUSH_SECRET"); // shared secret Apps Script uses to push
+// Client registry. JSON keyed by clientId:
+//   {"jedyapps":{"displayName":"JedyApps","admobAccount":"accounts/pub-...",
+//                "clickupFolder":"901210858217","emails":["ceo@jedyapps.com"]}}
+const CLIENTS = defineSecret("XG_CLIENTS");
+// "off" (default) leaves every read route open, exactly as before; "enforce"
+// requires a verified Google identity on the client's allowlist. Deploy with
+// off, add the registry, confirm sign-in works, then flip it.
+const AUTH_MODE = () => (process.env.XG_AUTH_MODE || "off").toLowerCase();
+const STAFF_DOMAINS = (process.env.XG_STAFF_DOMAINS || "thexgrowth.com").split(",").map((d) => d.trim().toLowerCase()).filter(Boolean);
 const BUCKET = "dolphin-fdffc-xg-timeseries";
 const storage = new Storage();
 
@@ -101,6 +111,22 @@ function readBodyText(req) {
   return JSON.stringify(req.body || {});
 }
 function payloadBytes(text) { return Buffer.byteLength(String(text || ""), "utf8"); }
+// Resolves the caller and authorises them for this client. Returns the
+// registry entry on success; on failure it has already written the response.
+async function gate(req, res, clientId) {
+  const entry = clientEntry(CLIENTS.value(), clientId);
+  if (AUTH_MODE() !== "enforce") return entry || {};      // open mode
+  if (!entry) { fail(res, 404, "unknown client"); return null; }
+  const raw = String(req.get("Authorization") || "");
+  const jwt = raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
+  if (!jwt) { fail(res, 401, "sign-in required"); return null; }
+  const who = await verifyIdToken(jwt, GOOGLE_CLIENT_ID.value());
+  if (!who) { fail(res, 401, "sign-in required"); return null; }
+  if (!mayAccess(entry, who.email, STAFF_DOMAINS)) { fail(res, 403, "not authorised for this client"); return null; }
+  req.xgEmail = who.email;
+  return entry;
+}
+
 function pushKey(req) { return String(req.get("X-Push-Key") || req.query.key || ""); }
 function safeEqual(a, b) {
   const aa = Buffer.from(String(a || ""));
@@ -373,7 +399,7 @@ async function invalidateReportArtifacts(clientId) {
 }
 
 exports.xgClientApi = onRequest(
-  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, PUSH_SECRET], region: "us-central1", memory: "512MiB", timeoutSeconds: 120 },
+  { secrets: [GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, CLICKUP_TOKEN, REFRESH_TOKENS, PUSH_SECRET, CLIENTS], region: "us-central1", memory: "512MiB", timeoutSeconds: 120 },
   async (req, res) => {
     applyCors(req, res);
     if (req.method === "OPTIONS") { noStore(res); res.status(204).end(); return; }
@@ -383,13 +409,48 @@ exports.xgClientApi = onRequest(
       if (path === "/health" || path === "/") {
         if (!isRead) { fail(res, 405, "GET only"); return; }
         noStore(res);
-        res.json({ ok: true });
+        res.json({ ok: true, authMode: AUTH_MODE() });
+        return;
+      }
+
+      // Every client this caller may open. The dashboard shows these as a
+      // picker when the hostname does not already name a client.
+      if (path === "/clients") {
+        if (!isRead) { fail(res, 405, "GET only"); return; }
+        const reg = registry(CLIENTS.value());
+        const ids = Object.keys(reg).sort();
+        let email = null;
+        if (AUTH_MODE() === "enforce") {
+          const raw = String(req.get("Authorization") || "");
+          const jwt = raw.startsWith("Bearer ") ? raw.slice(7).trim() : "";
+          const who = jwt ? await verifyIdToken(jwt, GOOGLE_CLIENT_ID.value()) : null;
+          if (!who) { fail(res, 401, "sign-in required"); return; }
+          email = who.email;
+        }
+        const visible = ids
+          .filter((id) => AUTH_MODE() !== "enforce" || mayAccess(reg[id], email, STAFF_DOMAINS))
+          .map((id) => ({ id, displayName: (reg[id] && reg[id].displayName) || id }));
+        noStore(res);
+        res.json({ ok: true, email, authMode: AUTH_MODE(), clients: visible });
+        return;
+      }
+
+      // Who am I, and what is this client called? The browser resolves its
+      // clientId from the hostname and asks here for the rest, which is why
+      // no client detail has to be baked into the build any more.
+      if (path === "/session") {
+        if (!isRead) { fail(res, 405, "GET only"); return; }
+        const clientId = readClientId(req, res); if (!clientId) return;
+        const entry = await gate(req, res, clientId); if (!entry) return;
+        noStore(res);
+        res.json({ ok: true, email: req.xgEmail || null, authMode: AUTH_MODE(), client: publicEntry(clientId, entry) });
         return;
       }
 
       if (path.startsWith("/admob/")) {
         if (!isAllowedAdmobProxy(path, req.method)) { fail(res, 405, "AdMob proxy route not allowed"); return; }
         const clientId = readClientId(req, res); if (!clientId) return;
+        if (!(await gate(req, res, clientId))) return;
         const bodyText = readBodyText(req);
         if (payloadBytes(bodyText) > MAX_JSON_BYTES) { fail(res, 413, "payload too large"); return; }
         const token = await accessTokenFor(clientId);
@@ -409,6 +470,10 @@ exports.xgClientApi = onRequest(
         if (!isAllowedClickUpProxy(path, req.method)) { fail(res, 405, "ClickUp proxy route not allowed"); return; }
         const writeError = validateClickUpWrite(req);
         if (writeError) { fail(res, 400, writeError); return; }
+        {
+          const clientId = readClientId(req, res); if (!clientId) return;
+          if (!(await gate(req, res, clientId))) return;
+        }
         const bodyText = req.method === "GET" || req.method === "HEAD" ? "" : readBodyText(req);
         if (payloadBytes(bodyText) > 4096) { fail(res, 413, "payload too large"); return; }
         const target = "https://api.clickup.com" + path.replace(/^\/clickup/, "") + restQuery(req.originalUrl, clickUpQueryKeys(path));
@@ -467,6 +532,7 @@ exports.xgClientApi = onRequest(
       if (path === "/timeseries") {
         if (!isRead) { fail(res, 405, "GET only"); return; }
         const clientId = readClientId(req, res); if (!clientId) return;
+        if (!(await gate(req, res, clientId))) return;
         try {
           const [buf] = await storage.bucket(BUCKET).file(clientId + ".json").download();
           const body = buf.toString("utf8");

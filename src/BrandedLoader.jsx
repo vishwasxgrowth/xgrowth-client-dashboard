@@ -9,30 +9,13 @@
 //
 // Two treatments, deliberately different:
 //
-//   full     the first screen — a knot hauls a rope the length of the bar
-//            and locks it at the far end. The cord it lays is the progress
-//            fill itself, so the track is the thing being dragged.
-//
-//   panel    inside the dashboard — shimmer skeleton rows wearing the same
-//   compact  3px left status stripe every task row has, so the placeholder
-//            is the shape of the content about to replace it.
+//   Every state is the same shimmer skeleton rows, wearing the 3px left
+//   status stripe every task row has, so the placeholder is always the shape
+//   of the content about to replace it. `full` adds the brand lockup.
 //
 //   <BrandedLoader full    label="…" />  boot, auth, first load
 //   <BrandedLoader panel   label="…" />  tab bodies (inside a card)
 //   <BrandedLoader compact label="…" />  modals and side panels
-
-function Rope() {
-  return (
-    <div className="xgl-rope" aria-hidden="true">
-      <span className="xgl-rope__track">
-        <span className="xgl-rope__fill" />
-        <span className="xgl-rope__lock" />
-        <span className="xgl-rope__spark"><i /><i /><i /></span>
-      </span>
-      <span className="xgl-rope__knot" />
-    </div>
-  );
-}
 
 function Row() {
   return (
@@ -43,6 +26,16 @@ function Row() {
       </div>
       <div className="xgl-av" />
       <div className="xgl-chip" />
+    </div>
+  );
+}
+
+function Rows({ compact }) {
+  return (
+    <div className="xgl-rows">
+      <Row />
+      <Row />
+      {!compact && <Row />}
     </div>
   );
 }
@@ -68,8 +61,8 @@ export default function BrandedLoader({ label = "Loading", full = false, panel =
             <span>Monetization console</span>
           </div>
         </div>
-        <Rope />
         {status}
+        <Rows compact={false} />
       </div>
     );
   }
@@ -77,11 +70,7 @@ export default function BrandedLoader({ label = "Loading", full = false, panel =
   return (
     <div className={cls} role="status" aria-live="polite" aria-busy="true">
       {status}
-      <div className="xgl-rows">
-        <Row />
-        <Row />
-        {!compact && <Row />}
-      </div>
+      <Rows compact={compact} />
     </div>
   );
 }

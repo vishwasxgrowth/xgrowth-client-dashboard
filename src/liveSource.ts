@@ -120,8 +120,7 @@ async function loadClickUpWorkspace(folderId) {
     membersError = "Using active assignees because ClickUp members could not be loaded";
   }
   if (!members.length) {
-    members = demo.MEMBERS;
-    membersError = membersError || "Using fallback members because ClickUp returned no members";
+    membersError = membersError || "ClickUp returned no workspace members";
   }
   return { tasks, listsMeta, members, membersError };
 }
@@ -135,16 +134,25 @@ export async function buildCachedSource(accountName, folderId) {
     for (let i = days - 1; i >= 0; i--) out.push(demo.dayKey(new Date(end - i * MS)));
     return out;
   };
+  const HAS_CLICKUP = !!folderId;
+  const HAS_ADMOB = !!accountName;
   return {
     IS_LIVE: true,
     SOURCE_MODE: "cached-timeseries",
     SOURCE_ERROR: null,
+    HAS_CLICKUP,
+    HAS_ADMOB,
     CONNECTIONS: {
       monetization: { status: "connected", detail: "Cached timeseries feed loaded" },
-      clickup: { status: "idle", detail: "ClickUp loads when a workspace view needs it" },
+      admob: HAS_ADMOB
+        ? { status: "idle", detail: "AdMob account " + accountName }
+        : { status: "not-configured", detail: "No AdMob account is linked to this client" },
+      clickup: HAS_CLICKUP
+        ? { status: "idle", detail: "ClickUp loads when a workspace view needs it" }
+        : { status: "not-configured", detail: "No ClickUp folder is linked to this client" },
     },
     TODAY,
-    MEMBERS: demo.MEMBERS,
+    MEMBERS: [],
     APPS: appsFromTimeseries(ts),
     dayKey: demo.dayKey,
     parseDay: demo.parseDay,
@@ -152,17 +160,17 @@ export async function buildCachedSource(accountName, folderId) {
     dayRow: (app, ds) => rowFromTimeseries(ts, app && (app.id || app.name), ds),
     aggregate: (app, dates) => aggregateTimeseries(ts, app && (app.id || app.name), dates),
     TASKS: [],
-    TASKS_SOURCE: "not-loaded",
+    TASKS_SOURCE: HAS_CLICKUP ? "not-loaded" : "not-configured",
     TASKS_ERROR: null,
-    EXPERIMENTS: demo.EXPERIMENTS,
-    experimentResults: demo.experimentResults,
+    EXPERIMENTS: [],
+    experimentResults: () => null,
     LISTS_META: null,
-    loadClickUpTasks: () => loadClickUpWorkspace(folderId),
+    loadClickUpTasks: HAS_CLICKUP ? () => loadClickUpWorkspace(folderId) : null,
     getTaskDetail,
     getTaskComments,
     updateTaskStatus,
     ACCOUNT: accountName,
-    adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed),
+    adUnitReport: HAS_ADMOB ? (sd, ed) => adUnitReport(accountName, sd, ed) : null,
   };
 }
 
@@ -205,14 +213,19 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     for (const ds of dates) { const r = dayRow(app, ds); revenue += r.revenue; impressions += r.impressions; requests += r.requests; matched += r.matched; clicks += r.clicks; }
     return { revenue, impressions, requests, matched, clicks, dau: 0, dav: 0, ecpm: impressions ? (revenue / impressions) * 1000 : 0, arpdau: 0, arpdav: 0, matchRate: requests ? matched / requests : 0, ctr: impressions ? clicks / impressions : 0, showRate: 0 };
   };
-  let TASKS = demo.TASKS; let LISTS_META = null; let TASKS_SOURCE = "demo-fallback";
-  try {
-    const { listsMeta, tasks } = await getFolderData(folderId, WORKFLOW_LISTS);
-    // An empty list is a legitimate ClickUp answer (e.g. an empty folder), not
-    // a failure — only an actual fetch error should fall back to demo data.
-    TASKS = tasks; LISTS_META = listsMeta; TASKS_SOURCE = "clickup";
-  } catch (e) {
-    console.warn("[clickup] could not load tasks, falling back to demo data:", e);
+  let TASKS = []; let LISTS_META = null;
+  let TASKS_SOURCE = folderId ? "error" : "not-configured";
+  let TASKS_ERROR = folderId ? null : "No ClickUp folder is linked to this client";
+  if (folderId) {
+    try {
+      const { listsMeta, tasks } = await getFolderData(folderId, WORKFLOW_LISTS);
+      // An empty list is a legitimate ClickUp answer (e.g. an empty folder),
+      // not a failure — it stays an empty list rather than becoming an error.
+      TASKS = tasks; LISTS_META = listsMeta; TASKS_SOURCE = "clickup";
+    } catch (e) {
+      TASKS_ERROR = String((e && e.message) || e);
+      console.warn("[clickup] could not load tasks:", e);
+    }
   }
   let MEMBERS = [];
   let MEMBERS_ERROR = null;
@@ -223,17 +236,23 @@ export async function buildLiveSource(accountName, folderId, token, windowDays =
     MEMBERS_ERROR = "Using active assignees because ClickUp members could not be loaded";
   }
   if (!MEMBERS.length) {
-    MEMBERS = demo.MEMBERS;
-    MEMBERS_ERROR = MEMBERS_ERROR || "Using fallback members because ClickUp returned no members";
+    MEMBERS_ERROR = MEMBERS_ERROR || "ClickUp returned no workspace members";
   }
   return {
     IS_LIVE: true,
     SOURCE_MODE: "live-admob",
     SOURCE_ERROR: null,
+    HAS_CLICKUP: !!folderId,
+    HAS_ADMOB: !!accountName,
     CONNECTIONS: {
       monetization: { status: "connected", detail: "Live AdMob mediation report loaded" },
-      clickup: { status: TASKS_SOURCE === "clickup" ? "connected" : "error", detail: TASKS_SOURCE === "clickup" ? "ClickUp task snapshot loaded" : "Using demo tasks because ClickUp failed" },
+      admob: { status: "connected", detail: "AdMob account " + accountName },
+      clickup: TASKS_SOURCE === "clickup"
+        ? { status: "connected", detail: "ClickUp task snapshot loaded" }
+        : TASKS_SOURCE === "not-configured"
+          ? { status: "not-configured", detail: "No ClickUp folder is linked to this client" }
+          : { status: "error", detail: TASKS_ERROR || "ClickUp could not be loaded" },
     },
-    TODAY, MEMBERS, MEMBERS_ERROR, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, EXPERIMENTS: demo.EXPERIMENTS, experimentResults: demo.experimentResults, LISTS_META, getTaskDetail, getTaskComments, updateTask, updateTaskStatus, updateTaskCustomField, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed)
+    TODAY, MEMBERS, MEMBERS_ERROR, APPS, dayKey: demo.dayKey, parseDay: demo.parseDay, rangeDates: demo.rangeDates, dayRow, aggregate, TASKS, TASKS_SOURCE, TASKS_ERROR, EXPERIMENTS: [], experimentResults: () => null, LISTS_META, getTaskDetail, getTaskComments, updateTask, updateTaskStatus, updateTaskCustomField, ACCOUNT: accountName, adUnitReport: (sd, ed) => adUnitReport(accountName, sd, ed)
   };
 }

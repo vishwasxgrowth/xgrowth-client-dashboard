@@ -1,7 +1,7 @@
 // @ts-nocheck
 import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
-import { C, card, Empty, member, shortDate } from "./theme";
+import { C, card, Empty, member, shortDate, NotConnected } from "./theme";
 
 const TEST_LIST = "Tests & Experiments";
 const STATUS_ORDER = ["blocked", "live", "ready for review", "review results", "to do", "complete", "done"];
@@ -286,6 +286,7 @@ export default function TestsTab({ tasks, q = "", openTask, taskLoadState, syncT
   const sel = { height: 32, borderRadius: 8, border: "1px solid " + C.line, padding: "0 8px", fontSize: 12.5, background: C.field, color: C.ink };
 
   if (taskLoadState === "loading" && !tasks.length) return <BrandedLoader panel label="Loading experiments" />;
+  if (taskLoadState === "not-configured") return <NotConnected what="Tests & Experiments" />;
   if (taskLoadState === "error" && !tasks.length) return <Empty>ClickUp experiments are unavailable.</Empty>;
   return (
     <>

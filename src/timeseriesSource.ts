@@ -4,8 +4,7 @@
 // (see apps-script/timeseries-webapp.gs for the authoritative shape), so the
 // Applications tab and the Dashboard tab always agree on the numbers instead
 // of the Applications tab deriving its own from the AdMob mediation report.
-const BASE = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").replace(/\/$/, "");
-const CLIENT = import.meta.env.VITE_CLIENT_ID || "jedyapps";
+import { BASE, CLIENT, apiFetch, setMeta } from "./session";
 
 function tsUrl() {
   return BASE ? BASE + "/timeseries?clientId=" + encodeURIComponent(CLIENT) : "/dev-timeseries.json";
@@ -14,8 +13,11 @@ function tsUrl() {
 let inflight = null; // shared across every caller in this tab session
 export function loadTimeseries() {
   if (!inflight) {
-    inflight = fetch(tsUrl())
+    inflight = apiFetch(tsUrl())
       .then((r) => { if (!r.ok) throw new Error("timeseries.json " + r.status); return r.json(); })
+      // The feed carries the client's own display name, so the header can be
+      // right even if /session was skipped.
+      .then((j) => { if (j && j.displayName) setMeta({ displayName: j.displayName }); return j; })
       .catch((e) => { inflight = null; throw e; });
   }
   return inflight;

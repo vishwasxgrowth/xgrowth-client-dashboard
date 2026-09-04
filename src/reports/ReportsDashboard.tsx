@@ -4,9 +4,7 @@ import APP_JS from "./reportsApp.js?raw";
 import CSS from "./reportsStyle.css?raw";
 import MARKUP from "./markup.html?raw";
 
-const BASE = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").replace(/\/$/, "");
-const CLIENT = import.meta.env.VITE_CLIENT_ID || "jedyapps";
-const NAME = import.meta.env.VITE_CLIENT_NAME || "Client";
+import { BASE, CLIENT, apiFetch, clientName } from "../session";
 
 export default function ReportsDashboard({ mode = "trends" }) {
   const host = useRef(null);
@@ -17,7 +15,10 @@ export default function ReportsDashboard({ mode = "trends" }) {
     window.__RPT_MANIFEST = BASE ? BASE + "/report-manifest?clientId=" + encodeURIComponent(CLIENT) : "/dev-manifest.json";
     window.__RPT_DAY = (date) => (BASE ? BASE + "/report-day?clientId=" + encodeURIComponent(CLIENT) + "&date=" + date : "/dev-days/" + date + ".html");
     window.__RPT_MODE = mode;
-    window.CLIENT_CONFIG = { key: CLIENT, name: NAME };
+    window.CLIENT_CONFIG = { key: CLIENT, name: clientName() };
+    // reportsApp.js is injected as raw source and calls fetch() directly, so
+    // it needs the same identity header as the rest of the app.
+    window.__RPT_FETCH = (u, o) => apiFetch(u, o);
 
     const style = document.createElement("style");
     style.setAttribute("data-reports", "1");
@@ -26,9 +27,9 @@ export default function ReportsDashboard({ mode = "trends" }) {
 
     root.innerHTML = MARKUP;
     const patched = APP_JS
-      .replace("fetch('data/timeseries.json', { cache: 'no-store' })", "fetch(window.__RPT_TS)")
-      .replace("fetch('data/' + date + '.html', { cache: 'no-store' })", "fetch(window.__RPT_DAY(date))")
-      .replace("fetch('data/manifest.json', { cache: 'no-store' })", "fetch(window.__RPT_MANIFEST)");
+      .replace("fetch('data/timeseries.json', { cache: 'no-store' })", "window.__RPT_FETCH(window.__RPT_TS)")
+      .replace("fetch('data/' + date + '.html', { cache: 'no-store' })", "window.__RPT_FETCH(window.__RPT_DAY(date))")
+      .replace("fetch('data/manifest.json', { cache: 'no-store' })", "window.__RPT_FETCH(window.__RPT_MANIFEST)");
     try {
       // eslint-disable-next-line no-new-func
       new Function(patched)();

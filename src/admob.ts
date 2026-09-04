@@ -1,8 +1,7 @@
 // @ts-nocheck
 // AdMob calls. In production they go through the xGrowth proxy (server-side token,
 // scoped by clientId). If a dev access token is provided, calls go browser-direct.
-const BASE = (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").replace(/\/$/, "");
-const CLIENT = import.meta.env.VITE_CLIENT_ID || "jedyapps";
+import { BASE, CLIENT, apiFetch } from "./session";
 const DEV_TOKEN = import.meta.env.VITE_DEV_ACCESS_TOKEN || "";
 
 export async function generateMediationReport(accountName, reportSpec, token) {
@@ -15,7 +14,7 @@ export async function generateMediationReport(accountName, reportSpec, token) {
     url = "https://admob.googleapis.com/v1alpha/" + accountName + "/mediationReport:generate";
     headers = { Authorization: "Bearer " + (DEV_TOKEN || token), "Content-Type": "application/json" };
   }
-  const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify({ reportSpec }) });
+  const resp = await apiFetch(url, { method: "POST", headers, body: JSON.stringify({ reportSpec }) });
   if (!resp.ok) throw new Error("AdMob " + resp.status + ": " + (await resp.text()));
   const text = await resp.text();
   try { return JSON.parse(text); }
@@ -29,7 +28,7 @@ export async function generateMediationReport(accountName, reportSpec, token) {
 export async function fetchAppIcons(accountName) {
   if (!BASE) return {}; // only available via the proxy (needs a server-side fetch)
   const url = BASE + "/app-icons?clientId=" + encodeURIComponent(CLIENT) + "&account=" + encodeURIComponent(accountName);
-  const resp = await fetch(url);
+  const resp = await apiFetch(url);
   if (!resp.ok) throw new Error("app-icons " + resp.status);
   return resp.json();
 }
@@ -50,7 +49,7 @@ export async function adUnitReport(accountName, startDate, endDate) {
     url = "https://admob.googleapis.com/v1alpha/" + accountName + "/mediationReport:generate";
     headers = { Authorization: "Bearer " + DEV_TOKEN, "Content-Type": "application/json" };
   }
-  const resp = await fetch(url, { method: "POST", headers, body: JSON.stringify({ reportSpec: spec }) });
+  const resp = await apiFetch(url, { method: "POST", headers, body: JSON.stringify({ reportSpec: spec }) });
   if (!resp.ok) throw new Error("AdMob adunit " + resp.status);
   const text = await resp.text();
   let rows; try { rows = JSON.parse(text); } catch { rows = text.split("\n").filter(Boolean).map((l) => JSON.parse(l)); }

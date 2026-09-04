@@ -15,8 +15,12 @@ import TestsTab from "./ops/TestsTab";
 import SettingsTab from "./ops/SettingsTab";
 import { Drawer, CreateModal, TestDetail } from "./ops/modals";
 
-const CLIENT_NAME = (import.meta.env.VITE_CLIENT_NAME || "Client");
-const SAVE_KEY = "xgrowth-ops.workspace.v1";
+import { clientName, clearClient, scopedKey } from "./session";
+// Per-client, because localStorage is shared across every client this browser
+// opens. The unscoped key below is the pre-multi-client one; it is cleared on
+// sight so one client's cached ClickUp tasks can never render under another.
+const LEGACY_SAVE_KEY = "xgrowth-ops.workspace.v1";
+const SAVE_KEY = scopedKey("xgrowth-ops.workspace.v1");
 const SAVE_VERSION = 1;
 const THEME_KEY = "xgrowth-theme.v1";
 
@@ -47,6 +51,7 @@ function readInitialTheme() {
 
 function readSavedWorkspace() {
   try {
+    try { localStorage.removeItem(LEGACY_SAVE_KEY); } catch (e) {}
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw);
@@ -67,20 +72,24 @@ function StatusNotice({ sourceError, taskLoadState, taskError, page, onRetry }) 
   const workspacePage = page === "tasks" || page === "tests" || page === "settings";
   let msg = null, tone = "warn";
   if (sourceError) {
-    msg = "Live monetization data is unavailable, so this session is using bundled demo data.";
+    msg = "Monetization data could not be loaded for this client.";
     tone = "error";
   } else if (workspacePage && taskLoadState === "loading") {
     msg = "Loading ClickUp tasks...";
+  } else if (workspacePage && taskLoadState === "not-configured") {
+    // Not an error: this client simply has no ClickUp folder in the registry.
+    msg = "ClickUp is not connected for " + clientName() + ".";
+    tone = "info";
   } else if (workspacePage && taskLoadState === "error") {
     msg = "ClickUp tasks are unavailable. Existing local changes are still visible.";
     tone = "error";
-  } else if (workspacePage && taskLoadState === "demo") {
-    msg = "Showing bundled task data because the live workspace is not connected.";
   }
   if (!msg) return null;
   const colors = tone === "error"
     ? { bg: C.dangerBg, bd: C.danger, fg: C.danger }
-    : { bg: C.warnBg, bd: C.warn, fg: C.warn };
+    : tone === "info"
+      ? { bg: C.panel, bd: C.line, fg: C.sub }
+      : { bg: C.warnBg, bd: C.warn, fg: C.warn };
   return (
     <div style={{ marginBottom: 14, padding: "9px 12px", border: "1px solid " + colors.bd, background: colors.bg, color: colors.fg, borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 12.5, fontWeight: 550 }}>
       <span style={{ flex: 1 }}>{msg}{taskError ? " " + taskError : sourceError ? " " + sourceError : ""}</span>
@@ -193,9 +202,9 @@ export default function XgrowthOps() {
   const [toast, setToast] = useState(null);
   const [savedAt, setSavedAt] = useState(() => savedWorkspace && savedWorkspace.at ? savedWorkspace.at : null);
   const [hasSavedTasks, setHasSavedTasks] = useState(() => !!(savedWorkspace && Array.isArray(savedWorkspace.tasks)));
-  const [tasks, setTasks] = useState(() => (savedWorkspace && Array.isArray(savedWorkspace.tasks)) ? savedWorkspace.tasks : D.TASKS.map((t) => ({ ...t })));
+  const [tasks, setTasks] = useState(() => (savedWorkspace && Array.isArray(savedWorkspace.tasks)) ? savedWorkspace.tasks : (D.TASKS || []).map((t) => ({ ...t })));
   const [connections, setConnections] = useState(() => D.CONNECTIONS || {});
-  const [taskLoadState, setTaskLoadState] = useState(() => D.TASKS_SOURCE === "clickup" ? "ready" : D.TASKS_SOURCE === "demo-fallback" ? "demo" : D.TASKS_SOURCE === "error" ? "error" : "idle");
+  const [taskLoadState, setTaskLoadState] = useState(() => D.TASKS_SOURCE === "clickup" ? "ready" : D.TASKS_SOURCE === "not-configured" ? "not-configured" : D.TASKS_SOURCE === "error" ? "error" : "idle");
   const [taskError, setTaskError] = useState(() => D.TASKS_ERROR || null);
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -231,7 +240,8 @@ export default function XgrowthOps() {
     syncTaskPatch(id, { status: statusName }, label);
   };
   const loadClickUp = useCallback(() => {
-    if (!D.loadClickUpTasks || taskLoadState === "loading") return;
+    if (!D.loadClickUpTasks) { setTaskLoadState("not-configured"); return; }
+    if (taskLoadState === "loading") return;
     setTaskLoadState("loading");
     setTaskError(null);
     setConnections((c) => ({ ...c, clickup: { status: "loading", detail: "Loading ClickUp task snapshot" } }));
@@ -264,10 +274,10 @@ export default function XgrowthOps() {
   const resetSaved = () => {
     try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
     setHasSavedTasks(false);
-    setTasks(D.TASKS.map((t) => ({ ...t })));
+    setTasks((D.TASKS || []).map((t) => ({ ...t })));
     setSavedAt(null);
     setOpenTask(null);
-    flash(D.TASKS_SOURCE === "clickup" ? "Reset to the ClickUp snapshot" : "Reset to the bundled task snapshot");
+    flash(D.TASKS_SOURCE === "clickup" ? "Reset to the ClickUp snapshot" : "Cleared local task changes");
   };
 
   const openCreate = (ctx) => setModal({
@@ -301,7 +311,7 @@ export default function XgrowthOps() {
       <div style={{ width: collapsed ? 62 : "fit-content", minWidth: collapsed ? 62 : 188, flex: "none", background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", borderRight: "1px solid " + C.line, display: "flex", flexDirection: "column", padding: "14px 10px", transition: "width .15s", backdropFilter: "blur(18px)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 6px 8px" }}>
           <div style={{ width: 32, height: 32, flex: "none", borderRadius: 10, background: C.brand, color: "#2B2F26", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, letterSpacing: 0 }}>xG</div>
-          {!collapsed && <div style={{ lineHeight: 1.15, whiteSpace: "nowrap" }}><div className="xg-display" style={{ fontSize: 16, fontWeight: 760, whiteSpace: "nowrap" }}>xGrowth × {CLIENT_NAME}</div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: C.faint2, letterSpacing: ".04em" }}>Monetization console</div></div>}
+          {!collapsed && <div onClick={clearClient} title="Switch client" style={{ lineHeight: 1.15, whiteSpace: "nowrap", cursor: "pointer" }}><div className="xg-display" style={{ fontSize: 16, fontWeight: 760, whiteSpace: "nowrap" }}>xGrowth × {clientName()}</div><div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: C.faint2, letterSpacing: ".04em" }}>Monetization console</div></div>}
         </div>
         <button onClick={() => setCollapsed((v) => !v)} title={collapsed ? "Expand" : "Collapse"} style={{ display: "flex", alignItems: "center", justifyContent: collapsed ? "center" : "flex-end", border: "none", background: "none", cursor: "pointer", color: C.faint2, padding: "0 8px 10px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{collapsed ? <path d="M9 18l6-6-6-6" /> : <path d="M15 18l-6-6 6-6" />}</svg>
@@ -323,7 +333,7 @@ export default function XgrowthOps() {
         <div style={{ minHeight: 64, flex: "none", borderBottom: "1px solid " + C.line, background: "color-mix(in srgb, var(--xg-surface) 88%, transparent)", display: "flex", alignItems: "center", gap: 14, padding: "10px 20px", flexWrap: "wrap", backdropFilter: "blur(18px)" }}>
           <div><div className="xg-display" style={{ fontSize: 28, lineHeight: "34px", fontWeight: 760 }}>{pageTitle}</div></div>
           <div style={{ flex: 1 }} />
-          <button onClick={() => openCreate(null)} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 740, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>
+          {D.HAS_CLICKUP !== false && <button onClick={() => openCreate(null)} style={{ height: 38, padding: "0 14px", borderRadius: 8, border: "none", background: C.accent, color: C.inverse, fontSize: 13, fontWeight: 740, cursor: "pointer", boxShadow: C.shadowSoft }}>+ New task</button>}
           {page === "apps" && <AppMultiSelect apps={D.APPS} value={selApps} onChange={setSelApps} />}
           <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>

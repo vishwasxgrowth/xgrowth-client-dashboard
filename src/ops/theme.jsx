@@ -100,6 +100,22 @@ export const Pill = ({ fg, bg, children }) => <span style={{ fontSize: 11, fontW
 export const card = { background: C.surface, border: "1px solid " + C.line, borderRadius: 16, boxShadow: C.shadowSoft };
 export const Empty = ({ children }) => <div style={{ ...card, padding: 40, textAlign: "center", color: C.faint }}>{children}</div>;
 
+// An integration this client does not have. Deliberately NOT styled as an
+// error, and deliberately never backed by sample data: a console that shows
+// another portfolio's tasks under this client's name is worse than one that
+// shows nothing.
+export function NotConnected({ what = "This view", service = "ClickUp", detail }) {
+  return (
+    <div style={{ ...card, padding: "44px 32px", textAlign: "center" }}>
+      <div style={{ width: 40, height: 40, margin: "0 auto 14px", borderRadius: 12, border: "1px solid " + C.line, background: C.field, color: C.faint2, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>—</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: C.ink, marginBottom: 6 }}>{service} is not connected</div>
+      <div style={{ fontSize: 12.5, color: C.sub, maxWidth: 420, margin: "0 auto", lineHeight: 1.55 }}>
+        {detail || what + " needs a " + service + " workspace linked to this client. Ask xGrowth to connect one and this view will fill in."}
+      </div>
+    </div>
+  );
+}
+
 // Real store icon when the live source resolved one (see liveSource.ts /
 // admob.ts fetchAppIcons); falls back to the colored-initials avatar on a
 // broken/missing URL (demo data, or an app with no linked store listing).

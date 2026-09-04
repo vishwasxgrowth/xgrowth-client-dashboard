@@ -2,7 +2,7 @@
 import BrandedLoader from "../BrandedLoader";
 import { useMemo, useState } from "react";
 import D from "../activeData";
-import { C, GROUPS, LISTS, card, Pill, Empty, groupId } from "./theme";
+import { C, GROUPS, LISTS, card, Pill, Empty, NotConnected, groupId } from "./theme";
 
 const DEFAULT_TASK_LIST = "Mediation Setup";
 
@@ -107,6 +107,7 @@ export default function TasksTab({ tasks: allTasks, taskView, onMove, scopeApp, 
   const drop = (k) => { if (dragId && useReal) onMove(dragId, k); setDragId(null); setOverCol(null); };
 
   if (!scopeApp && taskLoadState === "loading" && !tasks.length) return <BrandedLoader panel label="Loading ClickUp tasks" />;
+  if (!scopeApp && taskLoadState === "not-configured") return <NotConnected what="Tasks" />;
   if (!scopeApp && taskLoadState === "error" && !tasks.length) return <Empty>ClickUp tasks are unavailable.</Empty>;
   if (scopeApp && !tasks.length) return <Empty>No tasks matched to this app.</Empty>;
   return (

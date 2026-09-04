@@ -223,6 +223,8 @@ function CompareCell({ change }) {
 
 function TaskCell({ row, taskLoadState, onOpenTask, onCreateTask }) {
   if (taskLoadState === "loading") return <span style={{ color: C.faint, fontSize: 12 }}>—</span>;
+  // Nowhere to create a task, so offering the button would be a dead end.
+  if (taskLoadState === "not-configured") return <span style={{ color: C.faint2, fontSize: 11.5 }}>ClickUp not connected</span>;
   if (row.primaryTask) {
     const assignee = row.primaryTask.assignee;
     return (

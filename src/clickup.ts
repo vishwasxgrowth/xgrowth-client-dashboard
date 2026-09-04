@@ -1,9 +1,10 @@
 // @ts-nocheck
 const TEAM_ID = "9012725808";
-const base = () => (import.meta.env.VITE_FUNCTIONS_BASE_URL || "").replace(/\/$/, "");
+import { BASE, apiFetch } from "./session";
+const base = () => BASE;
 async function cu(path, opts) {
   const b = base(); if (!b) throw new Error("ClickUp proxy not configured");
-  const r = await fetch(b + "/clickup/api/v2" + path, opts);
+  const r = await apiFetch(b + "/clickup/api/v2" + path, opts);
   if (!r.ok) throw new Error("ClickUp " + r.status + ": " + (await r.text()).slice(0, 200));
   return r.json();
 }
