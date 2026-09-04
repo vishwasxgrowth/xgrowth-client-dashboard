@@ -200,10 +200,10 @@ function ExecutiveSummary({ p }) {
   );
 }
 
-function SortHeader({ label, col, active, onSort, align = "right" }) {
+function SortHeader({ label, col, active, onSort, align = "right", stick = false }) {
   const on = active.key === col;
   return (
-    <th style={{ textAlign: align, padding: 0, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: 2, background: C.surface }}>
+    <th style={{ textAlign: align, padding: 0, borderBottom: "1px solid " + C.line, whiteSpace: "nowrap", position: "sticky", top: 0, zIndex: stick ? 4 : 2, background: C.surface, ...(stick ? { left: 0, boxShadow: "1px 0 0 " + C.line } : null) }}>
       <button onClick={() => onSort(col)} title={"Sort by " + label} style={{ width: "100%", border: 0, background: "transparent", color: on ? C.accentDk : C.faint, padding: "11px 14px", textAlign: align, cursor: "pointer", fontSize: 10.5, textTransform: "uppercase", letterSpacing: ".04em", fontWeight: 820 }}>
         {label} {on ? active.dir === "asc" ? "▲" : "▼" : ""}
       </button>
@@ -291,7 +291,7 @@ function AppTable({ title, rows, empty, direction, taskLoadState, onOpenApp, onO
           <table style={{ width: "100%", minWidth: 1480, borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <SortHeader label="App" col="app" active={sort} onSort={onSort} align="left" />
+                <SortHeader label="App" col="app" active={sort} onSort={onSort} align="left" stick />
                 <SortHeader label="Tier" col="tier" active={sort} onSort={onSort} />
                 <SortHeader label="Rev (Yest)" col="revenue" active={sort} onSort={onSort} />
                 <SortHeader label="Vs SDLW" col="sdlw" active={sort} onSort={onSort} />
@@ -310,7 +310,7 @@ function AppTable({ title, rows, empty, direction, taskLoadState, onOpenApp, onO
             <tbody>
               {sorted.map((row) => (
                 <tr key={row.name} style={{ borderTop: "1px solid " + C.line }}>
-                  <td style={{ padding: "13px 14px", minWidth: 280, maxWidth: 340 }}>
+                  <td style={{ padding: "13px 14px", minWidth: 280, maxWidth: 340, position: "sticky", left: 0, zIndex: 1, background: C.surface, boxShadow: "inset 0 1px 0 " + C.line + ", 1px 0 0 " + C.line }}>
                     <button onClick={() => onOpenApp(row.name)} style={{ border: 0, background: "transparent", color: C.ink, padding: 0, cursor: "pointer", textAlign: "left", width: "100%" }}>
                       <span style={{ display: "block", fontWeight: 780, fontSize: 14.5, lineHeight: 1.35 }}>{row.name}</span>
                       <span style={{ display: "flex", alignItems: "center", gap: 7, color: C.sub, marginTop: 5, fontSize: 12.5 }}>
