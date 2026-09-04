@@ -27,18 +27,20 @@
       This must paint on the first frame of the HTML response, before the
       ~100 kB (gzip) JS bundle has downloaded, parsed and mounted React.
       Anything living in design.css is inside that bundle, so it is far too
-      late to cover the blank-screen window. Hence the duplicated token block
-      below: it mirrors design.css, but is available immediately.
+      late to cover the blank-screen window. Hence the duplicated token
+      block below: it mirrors design.css, but is available immediately.
 
       src/BrandedLoader.jsx renders this exact markup with these exact class
       names, so the handoff from boot splash to React has no visual seam.
 
-      Design follows the console itself rather than a generic spinner:
-        - the sidebar brand lockup (lime xG tile, radius 10, + caps subtitle)
-        - the uppercase letterspaced group-header treatment
-        - skeleton rows carrying the 3px left status stripe used by every
-          task row, cycling accent / warn / forest like the real groups
-      The result reads as the console assembling itself.
+      Two treatments:
+        .xgl--full     first screen — a knot hauls a rope the length of the
+                       bar and locks it at the far end. The cord it lays IS
+                       the progress fill, so the track is the thing being
+                       dragged rather than a container sitting next to it.
+        .xgl--panel    inside the dashboard — shimmer skeleton rows wearing
+        .xgl--compact  the same 3px left status stripe every task row has,
+                       so the placeholder is the shape of what replaces it.
     -->
     <style>
       #xg-boot, .xgl {
@@ -53,6 +55,7 @@
         --xgl-forest: #15803d;
         --xgl-brand: #beff74;
         --xgl-shimmer: rgba(255, 255, 255, 0.85);
+        --xgl-dur: 2.9s;
       }
       :root[data-theme="dark"] #xg-boot,
       :root[data-theme="dark"] .xgl {
@@ -94,15 +97,12 @@
         box-shadow: 0 8px 22px rgba(14, 15, 12, 0.06);
       }
       .xgl--panel .xgl-row { background: var(--xgl-surface2); }
-      .xgl--compact { gap: 12px; padding: 14px 2px; }
+      .xgl--compact { gap: 14px; padding: 14px 2px; }
+      .xgl--compact .xgl-status { font-size: 10px; }
 
-      /* Sidebar brand lockup: 32px lime tile at radius 10, weight 800 mark,
-         16px/760 wordmark over the 10px .04em caps line. */
-      .xgl-brand {
-        display: flex;
-        align-items: center;
-        gap: 11px;
-      }
+      /* Brand lockup, matching the sidebar: lime tile at radius 10-12, a
+         weight-800 mark, and the 10px .04em caps line under the wordmark. */
+      .xgl-brand { display: flex; align-items: center; gap: 11px; }
       .xgl-tile {
         width: 40px;
         height: 40px;
@@ -115,15 +115,9 @@
         justify-content: center;
         font-size: 15px;
         font-weight: 800;
-        animation: xgl-breathe 2.4s ease-in-out infinite;
       }
       .xgl-word { line-height: 1.15; }
-      .xgl-word b {
-        display: block;
-        font-size: 17px;
-        font-weight: 760;
-        white-space: nowrap;
-      }
+      .xgl-word b { display: block; font-size: 17px; font-weight: 760; white-space: nowrap; }
       .xgl-word span {
         display: block;
         margin-top: 1px;
@@ -154,16 +148,89 @@
         animation: xgl-blink 1.5s ease-in-out infinite;
       }
 
-      /* Skeleton rows carrying the 3px left status stripe. */
-      .xgl-rows {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+      /* ── Rope: the knot leads, the cord it lays is the progress fill ──
+         The fill stops 9px short so its leading edge sits under the knot
+         instead of running ahead of it; those last 9px snap home when the
+         knot reaches the ring, which is the lock. */
+      .xgl-rope {
+        position: relative;
         width: 100%;
+        max-width: 292px;
+        animation: xgl-cycle var(--xgl-dur) linear infinite;
       }
-      /* Full-screen and modal states are centred stacks, so they get a cap.
-         Inside a tab card the rows should span it, like the real list. */
-      .xgl--full .xgl-rows { max-width: 430px; }
+      .xgl-rope__track {
+        display: block;
+        position: relative;
+        height: 12px;
+        border-radius: 99px;
+        background: var(--xgl-line);
+      }
+      .xgl-rope__fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 0;
+        border-radius: 99px;
+        /* Diagonal bands read as twist. The second band mixes toward the
+           page background rather than to transparent, so it stays a cord on
+           dark, where gaps read as dashes. */
+        background-image: repeating-linear-gradient(
+          66deg,
+          var(--xgl-accent) 0 5px,
+          color-mix(in srgb, var(--xgl-accent) 80%, var(--xgl-bg)) 5px 10px
+        );
+        animation: xgl-lay var(--xgl-dur) cubic-bezier(0.42, 0.02, 0.58, 0.98) infinite;
+      }
+      .xgl-rope__knot {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 18px;
+        height: 18px;
+        margin-top: -9px;
+        border-radius: 50%;
+        border: 3.5px solid var(--xgl-accent);
+        background: var(--xgl-bg);
+        animation: xgl-haul var(--xgl-dur) cubic-bezier(0.42, 0.02, 0.58, 0.98) infinite;
+      }
+      .xgl-rope__lock {
+        position: absolute;
+        right: -3px;
+        top: 50%;
+        width: 16px;
+        height: 16px;
+        margin-top: -8px;
+        border-radius: 50%;
+        border: 3px solid var(--xgl-accent);
+        opacity: 0.34;
+        animation: xgl-snap var(--xgl-dur) ease-out infinite;
+      }
+      .xgl-rope__spark {
+        position: absolute;
+        right: -2px;
+        top: 50%;
+        width: 26px;
+        height: 26px;
+        margin-top: -13px;
+        animation: xgl-spark var(--xgl-dur) ease-out infinite;
+      }
+      .xgl-rope__spark i {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 9px;
+        height: 2.5px;
+        border-radius: 2px;
+        background: var(--xgl-accent);
+        transform-origin: -4px 50%;
+      }
+      .xgl-rope__spark i:nth-child(1) { transform: rotate(-45deg); }
+      .xgl-rope__spark i:nth-child(3) { transform: rotate(45deg); }
+
+      /* ── Skeleton rows: every loading state inside the dashboard ── */
+      .xgl-rows { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+      .xgl--compact .xgl-rows { max-width: 340px; }
       .xgl-row {
         display: flex;
         align-items: center;
@@ -176,32 +243,16 @@
         opacity: 0;
         animation: xgl-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
       }
-      .xgl-row:nth-child(2) {
-        border-left-color: var(--xgl-warn);
-        animation-delay: 0.09s;
-      }
-      .xgl-row:nth-child(3) {
-        border-left-color: var(--xgl-forest);
-        animation-delay: 0.18s;
-      }
-      .xgl-col {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
+      .xgl-row:nth-child(2) { border-left-color: var(--xgl-warn); animation-delay: 0.09s; }
+      .xgl-row:nth-child(3) { border-left-color: var(--xgl-forest); animation-delay: 0.18s; }
+      .xgl-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 
-      .xgl-bar,
-      .xgl-av,
-      .xgl-chip {
+      .xgl-bar, .xgl-av, .xgl-chip {
         position: relative;
         overflow: hidden;
         background: var(--xgl-line);
       }
-      .xgl-bar::after,
-      .xgl-av::after,
-      .xgl-chip::after {
+      .xgl-bar::after, .xgl-av::after, .xgl-chip::after {
         content: "";
         position: absolute;
         inset: 0;
@@ -219,30 +270,32 @@
       .xgl-bar { height: 10px; border-radius: 5px; }
       .xgl-bar--t { width: 52%; }
       .xgl-bar--s { width: 28%; height: 8px; }
-      .xgl-av {
-        width: 22px;
-        height: 22px;
-        flex: none;
-        border-radius: 50%;
-      }
-      .xgl-chip {
-        width: 54px;
-        height: 14px;
-        flex: none;
-        border-radius: 20px;
-      }
+      .xgl-av { width: 22px; height: 22px; flex: none; border-radius: 50%; }
+      .xgl-chip { width: 54px; height: 14px; flex: none; border-radius: 20px; }
       .xgl--compact .xgl-row { padding: 9px 12px; }
       .xgl--compact .xgl-bar { height: 9px; }
-      .xgl--compact .xgl-rows { max-width: 340px; }
 
-      @keyframes xgl-breathe {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(0.93); }
+      @keyframes xgl-cycle { 0% { opacity: 0 } 5% { opacity: 1 } 92% { opacity: 1 } 100% { opacity: 0 } }
+      @keyframes xgl-lay {
+        0%, 10%   { width: 0; }
+        84%       { width: calc(100% - 9px); }
+        90%, 100% { width: 100%; }
       }
-      @keyframes xgl-blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.25; }
+      @keyframes xgl-haul {
+        0%, 10%   { left: 0; }
+        84%, 100% { left: calc(100% - 18px); }
       }
+      @keyframes xgl-snap {
+        0%, 80%   { transform: scale(1); opacity: 0.34; }
+        86%       { transform: scale(1.4); opacity: 1; }
+        92%, 100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes xgl-spark {
+        0%, 82%   { opacity: 0; transform: scale(0.4); }
+        88%       { opacity: 1; transform: scale(1); }
+        97%, 100% { opacity: 0; transform: scale(1.25); }
+      }
+      @keyframes xgl-blink { 0%, 100% { opacity: 1 } 50% { opacity: 0.25 } }
       @keyframes xgl-rise {
         from { opacity: 0; transform: translateY(6px); }
         to { opacity: 1; transform: none; }
@@ -256,11 +309,18 @@
       #xg-boot.xg-boot--done { opacity: 0; pointer-events: none; }
 
       @media (prefers-reduced-motion: reduce) {
-        .xgl-tile,
         .xgl-dot,
+        .xgl-rope,
+        .xgl-rope__fill,
+        .xgl-rope__knot,
+        .xgl-rope__lock,
+        .xgl-rope__spark,
         .xgl-bar::after,
         .xgl-av::after,
         .xgl-chip::after { animation: none; }
+        .xgl-rope__fill { width: calc(58% - 9px); }
+        .xgl-rope__knot { left: calc(58% - 18px); }
+        .xgl-rope__spark { opacity: 0; }
         .xgl-row { opacity: 1; animation: none; }
       }
     </style>
@@ -272,12 +332,15 @@
         <div class="xgl-tile">xG</div>
         <div class="xgl-word"><b>xGrowth</b><span>Monetization console</span></div>
       </div>
-      <div class="xgl-status"><span class="xgl-dot"></span>Preparing console</div>
-      <div class="xgl-rows">
-        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
-        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
-        <div class="xgl-row"><div class="xgl-col"><div class="xgl-bar xgl-bar--t"></div><div class="xgl-bar xgl-bar--s"></div></div><div class="xgl-av"></div><div class="xgl-chip"></div></div>
+      <div class="xgl-rope" aria-hidden="true">
+        <span class="xgl-rope__track">
+          <span class="xgl-rope__fill"></span>
+          <span class="xgl-rope__lock"></span>
+          <span class="xgl-rope__spark"><i></i><i></i><i></i></span>
+        </span>
+        <span class="xgl-rope__knot"></span>
       </div>
+      <div class="xgl-status"><span class="xgl-dot"></span>Preparing console</div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
